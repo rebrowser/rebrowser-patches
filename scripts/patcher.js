@@ -1,0 +1,134 @@
+#! /usr/bin/env node
+
+import { readFile } from 'node:fs/promises'
+import { resolve } from 'node:path'
+
+import yargs from 'yargs'
+import { hideBin } from 'yargs/helpers'
+
+import {
+  exec,
+  fatalError,
+  getAvailablePatchesNames,
+  getPatchBaseCmd,
+  getPatcherPackagePath,
+  log,
+} from './utils/index.js';
+
+(async () => {
+  // config and preparations
+  const patchesNames = await getAvailablePatchesNames()
+  const cliArgs = yargs(hideBin(process.argv))
+    .usage('Usage: <command> [options]')
+    .command('patch', 'Apply patch')
+    .command('unpatch', 'Reverse patch')
+    .command('check', 'Check if patch is already applied')
+    .describe('packageName', 'Target package name: puppeteer-core, playwright')
+    .default('packageName', 'puppeteer-core')
+    .describe('packagePath', 'Path to the target package')
+    .describe('patchName', `Patch name: ${patchesNames.join(', ')}`)
+    .default('patchName', 'fixRuntimeLeak')
+    .demandOption(['patchName', 'packageName'])
+    .demandCommand(1, 1, 'Error: choose a command (patch, unpatch, check)')
+    .parse()
+
+  let {
+    packageName,
+    packagePath,
+    patchName,
+  } = cliArgs
+  const command = cliArgs._[0]
+  let commandResult
+
+  if (!packagePath) {
+    packagePath = `${process.cwd()}/node_modules/${packageName}`
+  }
+
+  if (!['patch', 'unpatch', 'check'].includes(command)) {
+    fatalError(`Unknown command: ${command}`)
+  }
+
+  const patchFilePath = resolve(getPatcherPackagePath(), `./patches/${packageName}/22.13.1/fixRuntimeLeak.patch`)
+
+  log('Config:')
+  log(`command = ${command}, packageName = ${packageName}, patchName = ${patchName}`)
+  log(`packagePath = ${packagePath}`)
+  log(`patchFilePath = ${patchFilePath}`)
+  log('------')
+
+  // find package
+  let packageJson
+  const packageJsonPath = resolve(packagePath, 'package.json')
+  try {
+    const packageJsonText = await readFile(packageJsonPath, { encoding: 'utf8' })
+    packageJson = JSON.parse(packageJsonText)
+  } catch (err) {
+    fatalError('Canot read package.json', err)
+  }
+
+  if (packageJson.name !== packageName) {
+    fatalError(`Package name is "${packageJson.name}", but we're looking for "${packageName}". Check your package path.`)
+  }
+
+  // check patch status
+  let patchStatus
+  try {
+    const { stdout, stderr } = await exec(`${getPatchBaseCmd(patchFilePath)} --dry-run`, {
+      cwd: packagePath,
+    })
+    patchStatus = 'unpatched'
+  } catch (e) {
+    if (e.stdout.includes('No file to patch')) {
+      fatalError('Internal error, patch command cannot find file to patch')
+    } else if (e.stdout.includes('Ignoring previously applied (or reversed) patch')) {
+      patchStatus = 'patched'
+    } else {
+      log('[debug] patch error:', e)
+      throw e
+    }
+  }
+
+  log(`Found ${packageJson.name}, version ${packageJson.version}, patch status = ${patchStatus === 'patched' ? '🟩' : '🟧'} ${patchStatus}`)
+
+  // run command
+  let execCmd
+  if (command === 'patch') {
+    if (patchStatus === 'patched') {
+      log('Package already patched.')
+    } else {
+      execCmd = getPatchBaseCmd(patchFilePath)
+    }
+  } else if (command === 'unpatch') {
+    if (patchStatus === 'unpatched') {
+      log('Package already unpatched.')
+    } else {
+      execCmd = `${getPatchBaseCmd(patchFilePath)} --reverse`
+    }
+  }
+
+  if (execCmd) {
+    try {
+      const { stdout, stderr } = await exec(execCmd, {
+        cwd: packagePath,
+      })
+      commandResult = 'success'
+    } catch (e) {
+      log('patch exec error:', e)
+      commandResult = 'error'
+    }
+  }
+
+  // process results
+  let exitCode = 0
+  let resultText
+  if (!commandResult) {
+    resultText = '🟡 nothing changed'
+  } else if (commandResult === 'success') {
+    resultText = '🟢 success'
+  } else if (commandResult === 'error') {
+    resultText = '🔴 error'
+    exitCode = 1
+  }
+  log(`Result: ${resultText}`)
+  process.exit(exitCode)
+})()
