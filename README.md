@@ -94,3 +94,8 @@ If you've tried everything and still face issues, try asking a question in the i
 This package is sponsored and maintained by [Rebrowser](https://rebrowser.net). We allow you to scale your automation in the cloud with hundreds of unique fingerprints.
 
 Our cloud browsers have great success rates and come with nice features such as notifications if your library uses `Runtime.Enable` during execution or has other red flags that could be improved. [Create an account](https://rebrowser.net) today to get invited to test our bleeding-edge platform and take your automation business to the next level.
+
+
+### Disclaimer
+<small>
+No responsibility is accepted for the use of this software. This software is intended for educational and informational purposes only. Users should use this software at their own risk. The developers of the software cannot be held liable for any damages that may result from the use of this software. This software is not intended to bypass any security measures, including but not limited to CAPTCHAs, anti-bot systems, or other protective mechanisms employed by websites. The software must not be used for malicious purposes. By using this software, you agree to this disclaimer and acknowledge that you are using the software responsibly and in compliance with all applicable laws and regulations.</small>

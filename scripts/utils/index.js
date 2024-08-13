@@ -4,7 +4,21 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 
-export const exec = promisify(execNative)
+const promisifiedExec = promisify(execNative)
+
+export const exec = async (...args) => {
+  if (isDebug()) {
+    log('[debug][exec]', args)
+  }
+
+  const execRes = await promisifiedExec(...args)
+
+  if (isDebug()) {
+    log('[debug][execRes]', execRes)
+  }
+
+  return execRes
+}
 export const log = console.log
 
 export const getPatcherPackagePath = () => {
@@ -27,3 +41,6 @@ export const getPatchBaseCmd = (patchFilePath) => {
   return `patch --batch -p1 --input=${patchFilePath} --verbose --reject-file=- --forward --silent`
 }
 
+export const isDebug = () => {
+  return !!process.env.REBROWSER_PATCHES_DEBUG
+}

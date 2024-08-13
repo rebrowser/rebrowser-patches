@@ -28,6 +28,8 @@ import {
     .describe('packagePath', 'Path to the target package')
     .describe('patchName', `Patch name: ${patchesNames.join(', ')}`)
     .default('patchName', 'fixRuntimeLeak')
+    .describe('debug', 'Enable debugging mode')
+    .epilog('To enable debug messages use env variable: REBROWSER_PATCHES_DEBUG=1')
     .demandOption(['patchName', 'packageName'])
     .demandCommand(1, 1, 'Error: choose a command (patch, unpatch, check)')
     .parse()
@@ -63,7 +65,7 @@ import {
     const packageJsonText = await readFile(packageJsonPath, { encoding: 'utf8' })
     packageJson = JSON.parse(packageJsonText)
   } catch (err) {
-    fatalError('Canot read package.json', err)
+    fatalError('Cannot read package.json', err)
   }
 
   if (packageJson.name !== packageName) {
