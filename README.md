@@ -55,21 +55,21 @@ This package is designed to be run against an installed library. Install the Pup
 
 In the root folder of your project, run:
 ```
-npx rebrowser-patches patch
+npx rebrowser-patches@latest patch
 ```
 
 You can easily revert all changes with this command:
 ```
-npx rebrowser-patches unpatch
+npx rebrowser-patches@latest unpatch
 ```
 
 You can also patch a package by providing the full path to its folder, for example:
 
 ```
-npx rebrowser-patches patch --packagePath /web/app/node_modules/puppeteer-core-custom
+npx rebrowser-patches@latest patch --packagePath /web/app/node_modules/puppeteer-core-custom
 ```
 
-You can see all command-line options by running `npx rebrowser-patches --help`, but currently, there's just one patch for one library, so you don't need to configure anything.
+You can see all command-line options by running `npx rebrowser-patches@latest --help`, but currently, there's just one patch for one library, so you don't need to configure anything.
 
 ⚠️ Be aware that after running `npm install` or `yarn install` in your project folder, it might override all the changes from the patches. You'll need to run the patcher again to keep the patches in place.
 
