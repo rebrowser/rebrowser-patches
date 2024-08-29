@@ -215,29 +215,31 @@
      frame = await this._frameTree.waitForFrame(frameId);
      frame._navigated(framePayload);
      this.emit(FrameManagerEvent.FrameNavigated, frame);
-@@ -482,7 +536,21 @@
+@@ -482,6 +536,24 @@
                worldName: name,
                grantUniveralAccess: true,
              })
--            .catch(debugError);
-+            .catch(debugError)
-+            .then(({ executionContextId }: any) => {
++            .then((createIsolatedWorldResult: any) => {
 +              // rebrowser-patches: save created context id
 +              if (!process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE']) {
 +                return
 +              }
++              if (!createIsolatedWorldResult?.executionContextId) {
++                // probably "Target closed" error, just ignore it
++                return
++              }
 +              // @ts-ignore
 +              this.#onExecutionContextCreated({
-+                id: executionContextId,
++                id: createIsolatedWorldResult.executionContextId,
 +                name,
 +                auxData: {
 +                  frameId: frame._id,
 +                }
 +              }, frame.client)
-+            });
++            })
+             .catch(debugError);
          })
      );
- 
 
 --- a/src/cdp/IsolatedWorld.ts	
 +++ b/src/cdp/IsolatedWorld.ts	
@@ -508,29 +510,31 @@
          frame = await this._frameTree.waitForFrame(frameId);
          frame._navigated(framePayload);
          this.emit(FrameManagerEvents_js_1.FrameManagerEvent.FrameNavigated, frame);
-@@ -380,7 +428,21 @@
+@@ -380,6 +428,24 @@
                  worldName: name,
                  grantUniveralAccess: true,
              })
--                .catch(util_js_1.debugError);
-+                .catch(util_js_1.debugError)
-+                .then(({ executionContextId }) => {
++                .then((createIsolatedWorldResult) => {
 +                // rebrowser-patches: save created context id
 +                if (!process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE']) {
 +                    return;
 +                }
++                if (!createIsolatedWorldResult?.executionContextId) {
++                    // probably "Target closed" error, just ignore it
++                    return;
++                }
 +                // @ts-ignore
 +                this.#onExecutionContextCreated({
-+                    id: executionContextId,
++                    id: createIsolatedWorldResult.executionContextId,
 +                    name,
 +                    auxData: {
 +                        frameId: frame._id,
 +                    }
 +                }, frame.client);
-+            });
++            })
+                 .catch(util_js_1.debugError);
          }));
          this.#isolatedWorlds.add(key);
-     }
 
 --- a/lib/cjs/puppeteer/cdp/IsolatedWorld.js	
 +++ b/lib/cjs/puppeteer/cdp/IsolatedWorld.js	
@@ -580,32 +584,6 @@
      }
      mainRealm() {
          return this.#world;
-
---- a/lib/cjs/puppeteer/injected/injected.d.ts	
-+++ b/lib/cjs/puppeteer/injected/injected.d.ts	
-@@ -31,7 +31,7 @@
-     pierceQuerySelector: (root: Node, selector: string) => Element | null;
-     pierceQuerySelectorAll: (element: Node, selector: string) => Element[];
-     customQuerySelectors: {
--        "__#55474@#selectors": Map<string, CustomQuerySelectors.CustomQuerySelector>;
-+        "__#55515@#selectors": Map<string, CustomQuerySelectors.CustomQuerySelector>;
-         register(name: string, handler: import("../index.js").CustomQueryHandler): void;
-         unregister(name: string): void;
-         get(name: string): CustomQuerySelectors.CustomQuerySelector | undefined;
-
---- a/lib/cjs/puppeteer/util/Mutex.d.ts	
-+++ b/lib/cjs/puppeteer/util/Mutex.d.ts	
-@@ -6,8 +6,8 @@
-     #private;
-     static Guard: {
-         new (mutex: Mutex, onRelease?: () => void): {
--            "__#55462@#mutex": Mutex;
--            "__#55462@#onRelease"?: (() => void) | undefined;
-+            "__#55503@#mutex": Mutex;
-+            "__#55503@#onRelease"?: (() => void) | undefined;
-             [Symbol.dispose](): void;
-         };
-     };
 
 --- a/lib/esm/puppeteer/cdp/ExecutionContext.d.ts	
 +++ b/lib/esm/puppeteer/cdp/ExecutionContext.d.ts	
@@ -827,29 +805,31 @@
          frame = await this._frameTree.waitForFrame(frameId);
          frame._navigated(framePayload);
          this.emit(FrameManagerEvent.FrameNavigated, frame);
-@@ -377,7 +425,21 @@
+@@ -377,6 +425,24 @@
                  worldName: name,
                  grantUniveralAccess: true,
              })
--                .catch(debugError);
-+                .catch(debugError)
-+                .then(({ executionContextId }) => {
++                .then((createIsolatedWorldResult) => {
 +                // rebrowser-patches: save created context id
 +                if (!process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE']) {
 +                    return;
 +                }
++                if (!createIsolatedWorldResult?.executionContextId) {
++                    // probably "Target closed" error, just ignore it
++                    return;
++                }
 +                // @ts-ignore
 +                this.#onExecutionContextCreated({
-+                    id: executionContextId,
++                    id: createIsolatedWorldResult.executionContextId,
 +                    name,
 +                    auxData: {
 +                        frameId: frame._id,
 +                    }
 +                }, frame.client);
-+            });
++            })
+                 .catch(debugError);
          }));
          this.#isolatedWorlds.add(key);
-     }
 
 --- a/lib/esm/puppeteer/cdp/IsolatedWorld.js	
 +++ b/lib/esm/puppeteer/cdp/IsolatedWorld.js	
