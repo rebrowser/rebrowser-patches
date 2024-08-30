@@ -28,8 +28,8 @@ import {
     .describe('packagePath', 'Path to the target package')
     .describe('patchName', `Patch name: ${patchesNames.join(', ')}`)
     .default('patchName', 'fixRuntimeLeak')
+    .boolean('debug')
     .describe('debug', 'Enable debugging mode')
-    .epilog('To enable debug messages use env variable: REBROWSER_PATCHES_DEBUG=1')
     .demandOption(['patchName', 'packageName'])
     .demandCommand(1, 1, 'Error: choose a command (patch, unpatch, check)')
     .parse()
@@ -38,7 +38,13 @@ import {
     packageName,
     packagePath,
     patchName,
+    debug,
   } = cliArgs
+
+  if (debug) {
+    process.env.REBROWSER_PATCHES_DEBUG = 1
+  }
+
   const command = cliArgs._[0]
   let commandResult
 
@@ -67,10 +73,10 @@ import {
   } catch (err) {
     fatalError('Cannot read package.json', err)
   }
-
   if (packageJson.name !== packageName) {
     fatalError(`Package name is "${packageJson.name}", but we're looking for "${packageName}". Check your package path.`)
   }
+  log(`Found package "${packageJson.name}", version ${packageJson.version}`)
 
   // check patch status
   let patchStatus
@@ -84,13 +90,18 @@ import {
       fatalError('Internal error, patch command cannot find file to patch')
     } else if (e.stdout.includes('Ignoring previously applied (or reversed) patch')) {
       patchStatus = 'patched'
+    } else if (e.stderr.includes('is not recognized')) {
+      let message = 'patch command not found!'
+      if (process.platform === 'win32') {
+        message += '\nCheck README for how to install patch.exe on Windows.'
+      }
+      fatalError(message)
     } else {
       log('[debug] patch error:', e)
       throw e
     }
   }
-
-  log(`Found ${packageJson.name}, version ${packageJson.version}, patch status = ${patchStatus === 'patched' ? '🟩' : '🟧'} ${patchStatus}`)
+  log(`Current patch status = ${patchStatus === 'patched' ? '🟩' : '🟧'} ${patchStatus}`)
 
   // run command
   let execCmd
