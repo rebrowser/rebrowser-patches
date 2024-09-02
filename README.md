@@ -75,6 +75,18 @@ You can see all command-line options by running `npx rebrowser-patches@latest --
 
 ⚠️ Be aware that after running `npm install` or `yarn install` in your project folder, it might override all the changes from the patches. You'll need to run the patcher again to keep the patches in place.
 
+## Supported versions
+
+| Pptr Ver                             | Release Date | Chrome Ver | Patch Support |
+|--------------------------------------|--------------|------------|---------------|
+| 23.2.x                               | 2024-08-29   | 128        | ✅             |
+| 23.1.x                               | 2024-08-14   | 127        | ✅             |
+| 23.0.x                               | 2024-08-07   | 127        | ✅             |
+| 22.15.x                              | 2024-07-31   | 127        | ✅             |
+| 22.14.x                              | 2024-07-25   | 127        | ✅             |
+| 22.13.x                              | 2024-07-11   | 126        | ✅             |
+| 22.12.x<br/><small>and below</small> | 2024-06-21   | 126        | ❌             |
+
 ## What about Playwright support?
 Currently, this repo contains only a patch for the latest Puppeteer version. Creating these patches is time-consuming as it requires digging into someone else's code and changing it in ways it wasn't designed for.
 

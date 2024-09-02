@@ -56,7 +56,7 @@ import {
     fatalError(`Unknown command: ${command}`)
   }
 
-  const patchFilePath = resolve(getPatcherPackagePath(), `./patches/${packageName}/22.15.0/fixRuntimeLeak.patch`)
+  const patchFilePath = resolve(getPatcherPackagePath(), `./patches/${packageName}/22.13.x/fixRuntimeLeak.patch`)
 
   log('Config:')
   log(`command = ${command}, packageName = ${packageName}, patchName = ${patchName}`)
