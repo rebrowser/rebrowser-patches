@@ -75,6 +75,9 @@ You can see all command-line options by running `npx rebrowser-patches@latest --
 
 ⚠️ Be aware that after running `npm install` or `yarn install` in your project folder, it might override all the changes from the patches. You'll need to run the patcher again to keep the patches in place.
 
+## How to update the patches?
+If you already have your package patched and want to update to the latest version of rebrowser-patches, the easiest way would be to delete `node_modules/puppeteer-core`, then run `npm install`, and then run `npx rebrowser-patches@latest patch`.
+
 ## Supported versions
 
 | Pptr Ver                             | Release Date | Chrome Ver | Patch Support |
