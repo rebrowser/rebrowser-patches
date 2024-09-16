@@ -31,10 +31,11 @@ This triggers `Runtime.executionContextCreated` events, allowing us to catch the
 
 > 🎉 Our tests show that both approaches are currently undetectable by Cloudflare or DataDome.
 
-**Important:** After applying the patch, you need to enable it by setting `REBROWSER_PATCHES_RUNTIME_FIX_MODE` environment variable. This allows you to easily switch between patched and non-patched versions based on your business logic.
+Note: you can change settings for this patch on the fly using an environment variable. This allows you to easily switch between patched and non-patched versions based on your business logic.
 
-- `REBROWSER_PATCHES_RUNTIME_FIX_MODE=alwaysIsolated` &mdash; always run all scripts in isolated context
+- `REBROWSER_PATCHES_RUNTIME_FIX_MODE=alwaysIsolated` &mdash; always run all scripts in isolated context (default)
 - `REBROWSER_PATCHES_RUNTIME_FIX_MODE=enableDisable` &mdash; use Enable/Disable technique
+- `REBROWSER_PATCHES_RUNTIME_FIX_MODE=0` &mdash; completely disable this patch
 - `REBROWSER_PATCHES_DEBUG=1` &mdash; enable some debugging messages
 
 Remember, you can set these variables in different ways, for example, in code:
@@ -57,9 +58,9 @@ By default, Puppeteer adds `//# sourceURL=pptr:...` to every script in `page.eva
 This patch changes it to `//# sourceURL=app.js`. You can also adjust it via environment variable:
 ```shell
 # use any generic filename
-process.env.REBROWSER_PATCHES_SOURCE_URL = "jquery.min.js"
+REBROWSER_PATCHES_SOURCE_URL=jquery.min.js
 # use 0 to completely disable this patch
-process.env.REBROWSER_PATCHES_SOURCE_URL = "0"
+REBROWSER_PATCHES_SOURCE_URL=0
 ```
 
 ### Method to access browser CDP connection
@@ -73,11 +74,11 @@ browser._connection().on('Rebrowser.addRunEvent', (params) => { ... })
 ### Change default utility world name
 The default utility world name is `'__puppeteer_utility_world__' + packageVersion`. Sometimes you might want to change it to something else. This patch changes it to `util` and allows you to customize it via env variable:
 ```shell
-REBROWSER_PATCHES_UTILITY_WORLD_NAME = "customUtilityWorld"
+REBROWSER_PATCHES_UTILITY_WORLD_NAME=customUtilityWorld
 # use 0 to completely disable this patch
-REBROWSER_PATCHES_UTILITY_WORLD_NAME = "0"
+REBROWSER_PATCHES_UTILITY_WORLD_NAME=0
 ```
-*This env variable cannot be changed on the fly, you have to set it before running your script because it's used at the moment when the module is getting imported.*
+This env variable cannot be changed on the fly, you have to set it before running your script because it's used at the moment when the module is getting imported.
 
 *Note: it's not detectable by external website scripts, but Google might use this information in their proprietary Chrome; we never know.*
 

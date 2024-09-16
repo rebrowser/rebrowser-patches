@@ -138,10 +138,5 @@ import {
   }
   log(`Result: ${resultText}`)
 
-  if (command !== 'unpatch') {
-    log('')
-    log('⚠️  REMINDER: You also need to enable the patch by setting an environment variable: REBROWSER_PATCHES_RUNTIME_FIX_MODE=alwaysIsolated')
-  }
-
   process.exit(exitCode)
 })()

@@ -35,7 +35,7 @@
      clientEmitter.on('Runtime.bindingCalled', this.#onBindingCalled.bind(this));
 -    clientEmitter.on('Runtime.executionContextDestroyed', async event => {
 -      if (event.executionContextId === this.#id) {
-+    if (!process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE']) {
++    if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE'] === '0') {
 +      clientEmitter.on('Runtime.executionContextDestroyed', async event => {
 +        if (event.executionContextId === this.#id) {
 +          this[disposeSymbol]();
@@ -53,7 +53,7 @@
      clientEmitter.on('Runtime.consoleAPICalled', this.#onConsoleAPI.bind(this));
      clientEmitter.on(CDPSessionEvent.Disconnected, () => {
        this[disposeSymbol]();
-@@ -351,6 +358,71 @@
+@@ -351,6 +358,74 @@
      return await this.#evaluate(false, pageFunction, ...args);
    }
  
@@ -69,12 +69,14 @@
 +    if (this.#id > 0) {
 +      return
 +    }
-+    process.env['REBROWSER_PATCHES_DEBUG'] && console.log(`[rebrowser-patches][acquireContextId] id = ${this.#id}, name = ${this.#name}, fixMode = ${process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE']}`)
++
++    const fixMode = process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE'] || 'alwaysIsolated'
++    process.env['REBROWSER_PATCHES_DEBUG'] && console.log(`[rebrowser-patches][acquireContextId] id = ${this.#id}, name = ${this.#name}, fixMode = ${fixMode}`)
 +
 +    let contextId: any
-+    if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE'] === 'alwaysIsolated') {
++    if (fixMode === 'alwaysIsolated') {
 +      if (this.#id === -3) {
-+        throw new Error('[rebrowser-patches] web workers are not supported with REBROWSER_PATCHES_RUNTIME_FIX_MODE = alwaysIsolated')
++        throw new Error('[rebrowser-patches] web workers are not supported in alwaysIsolated mode')
 +      }
 +
 +      const sendRes = await this.#client
@@ -83,8 +85,9 @@
 +          worldName: this.#name,
 +          grantUniveralAccess: true,
 +        })
++      process.env['REBROWSER_PATCHES_DEBUG'] && console.log(`[rebrowser-patches][acquireContextId] Page.createIsolatedWorld result:`, sendRes)
 +      contextId = sendRes.executionContextId
-+    } else if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE'] === 'enableDisable') {
++    } else if (fixMode === 'enableDisable') {
 +      const executionContextCreatedHandler = ({ context }: any) => {
 +        process.env['REBROWSER_PATCHES_DEBUG'] && console.log(`[rebrowser-patches][executionContextCreated] this.#id = ${this.#id}, name = ${this.#name}, contextId = ${contextId}, event.context.id = ${context.id}`)
 +
@@ -125,7 +128,7 @@
    async #evaluate<
      Params extends unknown[],
      Func extends EvaluateFunc<Params> = EvaluateFunc<Params>,
-@@ -375,6 +447,13 @@
+@@ -375,6 +450,13 @@
      pageFunction: Func | string,
      ...args: Params
    ): Promise<HandleFor<Awaited<ReturnType<Func>>> | Awaited<ReturnType<Func>>> {
@@ -146,7 +149,7 @@
        this.#onFrameStoppedLoading(event.frameId);
      });
      session.on('Runtime.executionContextCreated', async event => {
-+      if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE']) {
++      if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE'] !== '0') {
 +        // rebrowser-patches: ignore default logic
 +        return
 +      }
@@ -162,7 +165,7 @@
 -        }),
 +        (() => {
 +          // rebrowser-patches: skip Runtime.enable
-+          if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE']) {
++          if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE'] !== '0') {
 +            process.env['REBROWSER_PATCHES_DEBUG'] && console.log('[rebrowser-patches][FrameManager] initialize')
 +            return this.#createIsolatedWorld(client, UTILITY_WORLD_NAME)
 +          }
@@ -180,7 +183,7 @@
        ]);
 +
 +      // rebrowser-patches: manually create main world context
-+      if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE']) {
++      if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE'] !== '0') {
 +        this.frames()
 +          .filter(frame => {
 +            return frame.client === client;
@@ -211,7 +214,7 @@
  
 +    // rebrowser-patches: we cannot fully dispose contexts as they won't be recreated as we don't have Runtime events,
 +    // instead, just mark it all empty
-+    if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE']) {
++    if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE'] !== '0') {
 +      process.env['REBROWSER_PATCHES_DEBUG'] && console.log(`[rebrowser-patches] onFrameNavigated, navigationType = ${navigationType}, id = ${framePayload.id}, url = ${framePayload.url}`)
 +      for (const worldSymbol of [MAIN_WORLD, PUPPETEER_WORLD]) {
 +        // @ts-ignore
@@ -236,7 +239,7 @@
              })
 +            .then((createIsolatedWorldResult: any) => {
 +              // rebrowser-patches: save created context id
-+              if (!process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE']) {
++              if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE'] === '0') {
 +                return
 +              }
 +              if (!createIsolatedWorldResult?.executionContextId) {
@@ -274,7 +277,7 @@
      this.#world = new IsolatedWorld(this, new TimeoutSettings());
  
      this.#client.once('Runtime.executionContextCreated', async event => {
-+      if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE']) {
++      if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE'] !== '0') {
 +        // rebrowser-patches: ignore default logic
 +        return
 +      }
@@ -287,7 +290,7 @@
  
 -    // This might fail if the target is closed before we receive all execution contexts.
 -    this.#client.send('Runtime.enable').catch(debugError);
-+    if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE']) {
++    if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE'] !== '0') {
 +      // @ts-ignore
 +      process.env['REBROWSER_PATCHES_DEBUG'] && console.log('[rebrowser-patches][WebWorker] initialize', targetType, targetId, client._target(), client._target()._getTargetInfo())
 +
@@ -398,7 +401,7 @@
          clientEmitter.on('Runtime.bindingCalled', this.#onBindingCalled.bind(this));
 -        clientEmitter.on('Runtime.executionContextDestroyed', async (event) => {
 -            if (event.executionContextId === this.#id) {
-+        if (!process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE']) {
++        if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE'] === '0') {
 +            clientEmitter.on('Runtime.executionContextDestroyed', async (event) => {
 +                if (event.executionContextId === this.#id) {
 +                    this[disposable_js_1.disposeSymbol]();
@@ -416,7 +419,7 @@
          clientEmitter.on('Runtime.consoleAPICalled', this.#onConsoleAPI.bind(this));
          clientEmitter.on(CDPSession_js_1.CDPSessionEvent.Disconnected, () => {
              this[disposable_js_1.disposeSymbol]();
-@@ -324,7 +331,73 @@
+@@ -324,7 +331,75 @@
      async evaluateHandle(pageFunction, ...args) {
          return await this.#evaluate(false, pageFunction, ...args);
      }
@@ -432,11 +435,12 @@
 +        if (this.#id > 0) {
 +            return;
 +        }
-+        process.env['REBROWSER_PATCHES_DEBUG'] && console.log(`[rebrowser-patches][acquireContextId] id = ${this.#id}, name = ${this.#name}, fixMode = ${process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE']}`);
++        const fixMode = process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE'] || 'alwaysIsolated';
++        process.env['REBROWSER_PATCHES_DEBUG'] && console.log(`[rebrowser-patches][acquireContextId] id = ${this.#id}, name = ${this.#name}, fixMode = ${fixMode}`);
 +        let contextId;
-+        if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE'] === 'alwaysIsolated') {
++        if (fixMode === 'alwaysIsolated') {
 +            if (this.#id === -3) {
-+                throw new Error('[rebrowser-patches] web workers are not supported with REBROWSER_PATCHES_RUNTIME_FIX_MODE = alwaysIsolated');
++                throw new Error('[rebrowser-patches] web workers are not supported in alwaysIsolated mode');
 +            }
 +            const sendRes = await this.#client
 +                .send('Page.createIsolatedWorld', {
@@ -444,9 +448,10 @@
 +                worldName: this.#name,
 +                grantUniveralAccess: true,
 +            });
++            process.env['REBROWSER_PATCHES_DEBUG'] && console.log(`[rebrowser-patches][acquireContextId] Page.createIsolatedWorld result:`, sendRes);
 +            contextId = sendRes.executionContextId;
 +        }
-+        else if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE'] === 'enableDisable') {
++        else if (fixMode === 'enableDisable') {
 +            const executionContextCreatedHandler = ({ context }) => {
 +                process.env['REBROWSER_PATCHES_DEBUG'] && console.log(`[rebrowser-patches][executionContextCreated] this.#id = ${this.#id}, name = ${this.#name}, contextId = ${contextId}, event.context.id = ${context.id}`);
 +                if (contextId > 0) {
@@ -497,7 +502,7 @@
              this.#onFrameStoppedLoading(event.frameId);
          });
          session.on('Runtime.executionContextCreated', async (event) => {
-+            if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE']) {
++            if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE'] !== '0') {
 +                // rebrowser-patches: ignore default logic
 +                return;
 +            }
@@ -513,7 +518,7 @@
 -                }),
 +                (() => {
 +                    // rebrowser-patches: skip Runtime.enable
-+                    if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE']) {
++                    if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE'] !== '0') {
 +                        process.env['REBROWSER_PATCHES_DEBUG'] && console.log('[rebrowser-patches][FrameManager] initialize');
 +                        return this.#createIsolatedWorld(client, util_js_1.UTILITY_WORLD_NAME);
 +                    }
@@ -529,7 +534,7 @@
                  }),
              ]);
 +            // rebrowser-patches: manually create main world context
-+            if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE']) {
++            if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE'] !== '0') {
 +                this.frames()
 +                    .filter(frame => {
 +                    return frame.client === client;
@@ -557,7 +562,7 @@
          }
 +        // rebrowser-patches: we cannot fully dispose contexts as they won't be recreated as we don't have Runtime events,
 +        // instead, just mark it all empty
-+        if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE']) {
++        if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE'] !== '0') {
 +            process.env['REBROWSER_PATCHES_DEBUG'] && console.log(`[rebrowser-patches] onFrameNavigated, navigationType = ${navigationType}, id = ${framePayload.id}, url = ${framePayload.url}`);
 +            for (const worldSymbol of [IsolatedWorlds_js_1.MAIN_WORLD, IsolatedWorlds_js_1.PUPPETEER_WORLD]) {
 +                // @ts-ignore
@@ -581,7 +586,7 @@
              })
 +                .then((createIsolatedWorldResult) => {
 +                // rebrowser-patches: save created context id
-+                if (!process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE']) {
++                if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE'] === '0') {
 +                    return;
 +                }
 +                if (!createIsolatedWorldResult?.executionContextId) {
@@ -619,7 +624,7 @@
          this.#targetType = targetType;
          this.#world = new IsolatedWorld_js_1.IsolatedWorld(this, new TimeoutSettings_js_1.TimeoutSettings());
          this.#client.once('Runtime.executionContextCreated', async (event) => {
-+            if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE']) {
++            if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE'] !== '0') {
 +                // rebrowser-patches: ignore default logic
 +                return;
 +            }
@@ -632,7 +637,7 @@
          });
 -        // This might fail if the target is closed before we receive all execution contexts.
 -        this.#client.send('Runtime.enable').catch(util_js_1.debugError);
-+        if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE']) {
++        if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE'] !== '0') {
 +            // @ts-ignore
 +            process.env['REBROWSER_PATCHES_DEBUG'] && console.log('[rebrowser-patches][WebWorker] initialize', targetType, targetId, client._target(), client._target()._getTargetInfo());
 +            // rebrowser-patches: manually create context
@@ -744,7 +749,7 @@
          clientEmitter.on('Runtime.bindingCalled', this.#onBindingCalled.bind(this));
 -        clientEmitter.on('Runtime.executionContextDestroyed', async (event) => {
 -            if (event.executionContextId === this.#id) {
-+        if (!process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE']) {
++        if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE'] === '0') {
 +            clientEmitter.on('Runtime.executionContextDestroyed', async (event) => {
 +                if (event.executionContextId === this.#id) {
 +                    this[disposeSymbol]();
@@ -762,7 +767,7 @@
          clientEmitter.on('Runtime.consoleAPICalled', this.#onConsoleAPI.bind(this));
          clientEmitter.on(CDPSessionEvent.Disconnected, () => {
              this[disposeSymbol]();
-@@ -321,7 +328,73 @@
+@@ -321,7 +328,75 @@
      async evaluateHandle(pageFunction, ...args) {
          return await this.#evaluate(false, pageFunction, ...args);
      }
@@ -778,11 +783,12 @@
 +        if (this.#id > 0) {
 +            return;
 +        }
-+        process.env['REBROWSER_PATCHES_DEBUG'] && console.log(`[rebrowser-patches][acquireContextId] id = ${this.#id}, name = ${this.#name}, fixMode = ${process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE']}`);
++        const fixMode = process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE'] || 'alwaysIsolated';
++        process.env['REBROWSER_PATCHES_DEBUG'] && console.log(`[rebrowser-patches][acquireContextId] id = ${this.#id}, name = ${this.#name}, fixMode = ${fixMode}`);
 +        let contextId;
-+        if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE'] === 'alwaysIsolated') {
++        if (fixMode === 'alwaysIsolated') {
 +            if (this.#id === -3) {
-+                throw new Error('[rebrowser-patches] web workers are not supported with REBROWSER_PATCHES_RUNTIME_FIX_MODE = alwaysIsolated');
++                throw new Error('[rebrowser-patches] web workers are not supported in alwaysIsolated mode');
 +            }
 +            const sendRes = await this.#client
 +                .send('Page.createIsolatedWorld', {
@@ -790,9 +796,10 @@
 +                worldName: this.#name,
 +                grantUniveralAccess: true,
 +            });
++            process.env['REBROWSER_PATCHES_DEBUG'] && console.log(`[rebrowser-patches][acquireContextId] Page.createIsolatedWorld result:`, sendRes);
 +            contextId = sendRes.executionContextId;
 +        }
-+        else if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE'] === 'enableDisable') {
++        else if (fixMode === 'enableDisable') {
 +            const executionContextCreatedHandler = ({ context }) => {
 +                process.env['REBROWSER_PATCHES_DEBUG'] && console.log(`[rebrowser-patches][executionContextCreated] this.#id = ${this.#id}, name = ${this.#name}, contextId = ${contextId}, event.context.id = ${context.id}`);
 +                if (contextId > 0) {
@@ -843,7 +850,7 @@
              this.#onFrameStoppedLoading(event.frameId);
          });
          session.on('Runtime.executionContextCreated', async (event) => {
-+            if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE']) {
++            if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE'] !== '0') {
 +                // rebrowser-patches: ignore default logic
 +                return;
 +            }
@@ -859,7 +866,7 @@
 -                }),
 +                (() => {
 +                    // rebrowser-patches: skip Runtime.enable
-+                    if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE']) {
++                    if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE'] !== '0') {
 +                        process.env['REBROWSER_PATCHES_DEBUG'] && console.log('[rebrowser-patches][FrameManager] initialize');
 +                        return this.#createIsolatedWorld(client, UTILITY_WORLD_NAME);
 +                    }
@@ -875,7 +882,7 @@
                  }),
              ]);
 +            // rebrowser-patches: manually create main world context
-+            if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE']) {
++            if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE'] !== '0') {
 +                this.frames()
 +                    .filter(frame => {
 +                    return frame.client === client;
@@ -903,7 +910,7 @@
          }
 +        // rebrowser-patches: we cannot fully dispose contexts as they won't be recreated as we don't have Runtime events,
 +        // instead, just mark it all empty
-+        if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE']) {
++        if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE'] !== '0') {
 +            process.env['REBROWSER_PATCHES_DEBUG'] && console.log(`[rebrowser-patches] onFrameNavigated, navigationType = ${navigationType}, id = ${framePayload.id}, url = ${framePayload.url}`);
 +            for (const worldSymbol of [MAIN_WORLD, PUPPETEER_WORLD]) {
 +                // @ts-ignore
@@ -927,7 +934,7 @@
              })
 +                .then((createIsolatedWorldResult) => {
 +                // rebrowser-patches: save created context id
-+                if (!process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE']) {
++                if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE'] === '0') {
 +                    return;
 +                }
 +                if (!createIsolatedWorldResult?.executionContextId) {
@@ -965,7 +972,7 @@
          this.#targetType = targetType;
          this.#world = new IsolatedWorld(this, new TimeoutSettings());
          this.#client.once('Runtime.executionContextCreated', async (event) => {
-+            if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE']) {
++            if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE'] !== '0') {
 +                // rebrowser-patches: ignore default logic
 +                return;
 +            }
@@ -978,7 +985,7 @@
          });
 -        // This might fail if the target is closed before we receive all execution contexts.
 -        this.#client.send('Runtime.enable').catch(debugError);
-+        if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE']) {
++        if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE'] !== '0') {
 +            // @ts-ignore
 +            process.env['REBROWSER_PATCHES_DEBUG'] && console.log('[rebrowser-patches][WebWorker] initialize', targetType, targetId, client._target(), client._target()._getTargetInfo());
 +            // rebrowser-patches: manually create context
