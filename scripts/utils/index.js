@@ -25,13 +25,6 @@ export const getPatcherPackagePath = () => {
   return resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 }
 
-export const getAvailablePatchesNames = async () => {
-  const pptrBaseDir = resolve(getPatcherPackagePath(), './patches/puppeteer-core/')
-  const pptrVersions = await readdir(pptrBaseDir)
-  const latestVersionPatches = await readdir(resolve(pptrBaseDir, pptrVersions[0]))
-  return latestVersionPatches.map(p => p.split('.')[0])
-}
-
 export const fatalError = (...args) => {
   console.error('❌ FATAL ERROR:', ...args)
   process.exit(1)

@@ -54,11 +54,5 @@
   },
   "dependencies": {
     "yargs": "^17.7.2"
-  },
-  "devDependencies": {
-    "eslint": "^8.51.0",
-    "eslint-plugin-import": "^2.28.1",
-    "eslint-plugin-simple-import-sort": "^10.0.0",
-    "eslint-plugin-unused-imports": "^3.0.0"
   }
 }

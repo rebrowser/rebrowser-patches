@@ -9,7 +9,6 @@ import { hideBin } from 'yargs/helpers'
 import {
   exec,
   fatalError,
-  getAvailablePatchesNames,
   getPatchBaseCmd,
   getPatcherPackagePath,
   log,
@@ -17,7 +16,6 @@ import {
 
 (async () => {
   // config and preparations
-  const patchesNames = await getAvailablePatchesNames()
   const cliArgs = yargs(hideBin(process.argv))
     .usage('Usage: <command> [options]')
     .command('patch', 'Apply patch')
@@ -26,18 +24,14 @@ import {
     .describe('packageName', 'Target package name: puppeteer-core, playwright')
     .default('packageName', 'puppeteer-core')
     .describe('packagePath', 'Path to the target package')
-    .describe('patchName', `Patch name: ${patchesNames.join(', ')}`)
-    .default('patchName', 'fixRuntimeLeak')
     .boolean('debug')
     .describe('debug', 'Enable debugging mode')
-    .demandOption(['patchName', 'packageName'])
     .demandCommand(1, 1, 'Error: choose a command (patch, unpatch, check)')
     .parse()
 
   let {
     packageName,
     packagePath,
-    patchName,
     debug,
   } = cliArgs
 
@@ -56,10 +50,10 @@ import {
     fatalError(`Unknown command: ${command}`)
   }
 
-  const patchFilePath = resolve(getPatcherPackagePath(), `./patches/${packageName}/22.13.x/fixRuntimeLeak.patch`)
+  const patchFilePath = resolve(getPatcherPackagePath(), `./patches/${packageName}/22.13.x.patch`)
 
   log('Config:')
-  log(`command = ${command}, packageName = ${packageName}, patchName = ${patchName}`)
+  log(`command = ${command}, packageName = ${packageName}`)
   log(`packagePath = ${packagePath}`)
   log(`patchFilePath = ${patchFilePath}`)
   log('------')

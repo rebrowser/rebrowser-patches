@@ -1,3 +1,18 @@
+--- a/src/cdp/Browser.ts	
++++ b/src/cdp/Browser.ts	
+@@ -338,6 +338,11 @@
+     return await this.#defaultContext.newPage();
+   }
+ 
++  // rebrowser-patches: expose browser CDP session
++  _connection(): Connection {
++    return this.#connection;
++  }
++
+   async _createPageInContext(contextId?: string): Promise<Page> {
+     const {targetId} = await this.#connection.send('Target.createTarget', {
+       url: 'about:blank',
+
 --- a/src/cdp/ExecutionContext.ts	
 +++ b/src/cdp/ExecutionContext.ts	
 @@ -78,6 +78,7 @@
@@ -289,6 +304,56 @@
    }
  
    mainRealm(): Realm {
+
+--- a/src/common/util.ts	
++++ b/src/common/util.ts	
+@@ -328,7 +328,9 @@
+  * @internal
+  */
+ export const UTILITY_WORLD_NAME =
+-  '__puppeteer_utility_world__' + packageVersion;
++  // rebrowser-patches: change utility world name
++  process.env['REBROWSER_PATCHES_UTILITY_WORLD_NAME'] !== '0' ? (process.env['REBROWSER_PATCHES_UTILITY_WORLD_NAME'] || 'util') :
++    '__puppeteer_utility_world__' + packageVersion;
+ 
+ /**
+  * @internal
+@@ -338,6 +340,10 @@
+  * @internal
+  */
+ export function getSourceUrlComment(url: string): string {
++  // rebrowser-patches: change sourceUrl to generic script name
++  if (process.env['REBROWSER_PATCHES_SOURCE_URL'] !== '0') {
++    url = process.env['REBROWSER_PATCHES_SOURCE_URL'] || 'app.js'
++  }
+   return `//# sourceURL=${url}`;
+ }
+ 
+
+--- a/lib/cjs/puppeteer/cdp/Browser.d.ts	
++++ b/lib/cjs/puppeteer/cdp/Browser.d.ts	
+@@ -32,6 +32,7 @@
+     _disposeContext(contextId?: string): Promise<void>;
+     wsEndpoint(): string;
+     newPage(): Promise<Page>;
++    _connection(): Connection;
+     _createPageInContext(contextId?: string): Promise<Page>;
+     targets(): CdpTarget[];
+     target(): CdpTarget;
+
+--- a/lib/cjs/puppeteer/cdp/Browser.js	
++++ b/lib/cjs/puppeteer/cdp/Browser.js	
+@@ -176,6 +176,10 @@
+     async newPage() {
+         return await this.#defaultContext.newPage();
+     }
++    // rebrowser-patches: expose browser CDP session
++    _connection() {
++        return this.#connection;
++    }
+     async _createPageInContext(contextId) {
+         const { targetId } = await this.#connection.send('Target.createTarget', {
+             url: 'about:blank',
 
 --- a/lib/cjs/puppeteer/cdp/ExecutionContext.d.ts	
 +++ b/lib/cjs/puppeteer/cdp/ExecutionContext.d.ts	
@@ -585,6 +650,57 @@
      mainRealm() {
          return this.#world;
 
+--- a/lib/cjs/puppeteer/common/util.js	
++++ b/lib/cjs/puppeteer/common/util.js	
+@@ -294,7 +294,10 @@
+ /**
+  * @internal
+  */
+-exports.UTILITY_WORLD_NAME = '__puppeteer_utility_world__' + version_js_1.packageVersion;
++exports.UTILITY_WORLD_NAME = 
++// rebrowser-patches: change utility world name
++process.env['REBROWSER_PATCHES_UTILITY_WORLD_NAME'] !== '0' ? (process.env['REBROWSER_PATCHES_UTILITY_WORLD_NAME'] || 'util') :
++    '__puppeteer_utility_world__' + version_js_1.packageVersion;
+ /**
+  * @internal
+  */
+@@ -303,6 +306,10 @@
+  * @internal
+  */
+ function getSourceUrlComment(url) {
++    // rebrowser-patches: change sourceUrl to generic script name
++    if (process.env['REBROWSER_PATCHES_SOURCE_URL'] !== '0') {
++        url = process.env['REBROWSER_PATCHES_SOURCE_URL'] || 'app.js';
++    }
+     return `//# sourceURL=${url}`;
+ }
+ exports.getSourceUrlComment = getSourceUrlComment;
+
+--- a/lib/esm/puppeteer/cdp/Browser.d.ts	
++++ b/lib/esm/puppeteer/cdp/Browser.d.ts	
+@@ -32,6 +32,7 @@
+     _disposeContext(contextId?: string): Promise<void>;
+     wsEndpoint(): string;
+     newPage(): Promise<Page>;
++    _connection(): Connection;
+     _createPageInContext(contextId?: string): Promise<Page>;
+     targets(): CdpTarget[];
+     target(): CdpTarget;
+
+--- a/lib/esm/puppeteer/cdp/Browser.js	
++++ b/lib/esm/puppeteer/cdp/Browser.js	
+@@ -173,6 +173,10 @@
+     async newPage() {
+         return await this.#defaultContext.newPage();
+     }
++    // rebrowser-patches: expose browser CDP session
++    _connection() {
++        return this.#connection;
++    }
+     async _createPageInContext(contextId) {
+         const { targetId } = await this.#connection.send('Target.createTarget', {
+             url: 'about:blank',
+
 --- a/lib/esm/puppeteer/cdp/ExecutionContext.d.ts	
 +++ b/lib/esm/puppeteer/cdp/ExecutionContext.d.ts	
 @@ -22,6 +22,7 @@
@@ -879,3 +995,29 @@
      }
      mainRealm() {
          return this.#world;
+
+--- a/lib/esm/puppeteer/common/util.js	
++++ b/lib/esm/puppeteer/common/util.js	
+@@ -254,7 +254,10 @@
+ /**
+  * @internal
+  */
+-export const UTILITY_WORLD_NAME = '__puppeteer_utility_world__' + packageVersion;
++export const UTILITY_WORLD_NAME = 
++// rebrowser-patches: change utility world name
++process.env['REBROWSER_PATCHES_UTILITY_WORLD_NAME'] !== '0' ? (process.env['REBROWSER_PATCHES_UTILITY_WORLD_NAME'] || 'util') :
++    '__puppeteer_utility_world__' + packageVersion;
+ /**
+  * @internal
+  */
+@@ -263,6 +266,10 @@
+  * @internal
+  */
+ export function getSourceUrlComment(url) {
++    // rebrowser-patches: change sourceUrl to generic script name
++    if (process.env['REBROWSER_PATCHES_SOURCE_URL'] !== '0') {
++        url = process.env['REBROWSER_PATCHES_SOURCE_URL'] || 'app.js';
++    }
+     return `//# sourceURL=${url}`;
+ }
+ /**

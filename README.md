@@ -52,6 +52,35 @@ REBROWSER_PATCHES_RUNTIME_FIX_MODE=alwaysIsolated node app.js
 |--------| --- |
 | ![before](https://github.com/user-attachments/assets/daf4fee7-538c-49aa-946a-f9e939fe8fe5) | ![after](https://github.com/user-attachments/assets/0680a6f1-2fd9-4a49-ad7f-ae32758715ec) |
 
+### Change sourceURL to generic script name
+By default, Puppeteer adds `//# sourceURL=pptr:...` to every script in `page.evaluate()`. A remote website can detect this behavior and raise red flags. 
+This patch changes it to `//# sourceURL=app.js`. You can also adjust it via environment variable:
+```shell
+# use any generic filename
+process.env.REBROWSER_PATCHES_SOURCE_URL = "jquery.min.js"
+# use 0 to completely disable this patch
+process.env.REBROWSER_PATCHES_SOURCE_URL = "0"
+```
+
+### Method to access browser CDP connection
+Sometimes, it could be very useful to access a CDP session at a browser level. For example, when you want to implement some custom CDP command. There is a method `page._client()` that returns CDP session for the current page instance, but there is no such method for browser instance. 
+This patch adds a new method `_connection()` to Browser class, so you can use it like this:
+```js
+browser._connection().on('Rebrowser.addRunEvent', (params) => { ... })
+```
+*Note: it's not detectable by external website scripts, it's just for your convenience.*
+
+### Change default utility world name
+The default utility world name is `'__puppeteer_utility_world__' + packageVersion`. Sometimes you might want to change it to something else. This patch changes it to `util` and allows you to customize it via env variable:
+```shell
+REBROWSER_PATCHES_UTILITY_WORLD_NAME = "customUtilityWorld"
+# use 0 to completely disable this patch
+REBROWSER_PATCHES_UTILITY_WORLD_NAME = "0"
+```
+*This env variable cannot be changed on the fly, you have to set it before running your script because it's used at the moment when the module is getting imported.*
+
+*Note: it's not detectable by external website scripts, but Google might use this information in their proprietary Chrome; we never know.*
+
 ## Usage
 This package is designed to be run against an installed library. Install the Puppeteer library, then call the patcher, and it's ready to go.
 
@@ -76,7 +105,7 @@ You can see all command-line options by running `npx rebrowser-patches@latest --
 ⚠️ Be aware that after running `npm install` or `yarn install` in your project folder, it might override all the changes from the patches. You'll need to run the patcher again to keep the patches in place.
 
 ## How to update the patches?
-If you already have your package patched and want to update to the latest version of rebrowser-patches, the easiest way would be to delete `node_modules/puppeteer-core`, then run `npm install`, and then run `npx rebrowser-patches@latest patch`.
+If you already have your package patched and want to update to the latest version of rebrowser-patches, the easiest way would be to delete `node_modules/puppeteer-core`, then run `npm install` or `yarn install --check-files`, and then run `npx rebrowser-patches@latest patch`.
 
 ## Supported versions
 
