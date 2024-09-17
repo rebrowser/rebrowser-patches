@@ -31,7 +31,7 @@ export const fatalError = (...args) => {
 }
 
 export const getPatchBaseCmd = (patchFilePath) => {
-  return `patch --batch -p1 --input=${patchFilePath} --verbose --reject-file=- --forward --silent`
+  return `patch --batch -p1 --input=${patchFilePath} --verbose --no-backup-if-mismatch --reject-file=- --forward --silent`
 }
 
 export const isDebug = () => {

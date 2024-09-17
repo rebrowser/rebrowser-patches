@@ -4,6 +4,15 @@ This repo contains patches to enhance popular web automation libraries. Specific
 
 Some aspects of automation libraries or browser behavior cannot be adjusted through settings or command-line switches. Therefore, we fix these issues by patching the library's source code. While this approach is fragile and may break as the libraries' source code changes over time, the goal is to maintain this repo with community help to keep the patches up to date.
 
+## Do I really need any patches?
+Out of the box Puppeteer and Playwright come with some significant leaks that are easy to detect. It doesn't matter how good your proxies, fingeprints, and behaviour scripts, if you don't have it patched, you're just a big red flag for any major website.
+
+🕵️ You can easily test your automation setup for major modern detections with [rebrowser-bot-detector](https://rebrowser.github.io/rebrowser-bot-detector/) ([sources and details](https://github.com/rebrowser/rebrowser-bot-detector))
+
+| Before the patches 👎                                                                      | After the patches 👍                                                                      |
+|--------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------|
+| ![before](https://github.com/user-attachments/assets/6fc29650-4ea9-4d27-a152-0b7b40cd2b92) | ![after](https://github.com/user-attachments/assets/2ba0db25-c0db-4015-9c83-731a355cd2e9) |
+
 ## Available patches
 ### Fix `Runtime.Enable` leak
 Popular automation libraries rely on the CDP command `Runtime.Enable`, which allows receiving events from the `Runtime.` domain. This is crucial for managing execution contexts used to evaluate JavaScript on pages, a key feature for any automation process.
@@ -47,12 +56,6 @@ or in command line:
 REBROWSER_PATCHES_RUNTIME_FIX_MODE=alwaysIsolated node app.js
 ```
 
-> To test this leak, you can use this page: [https://kaliiiiiiiiii.github.io/brotector/](https://kaliiiiiiiiii.github.io/brotector/) ([sources](https://github.com/kaliiiiiiiiii/brotector/blob/master/brotector.js))
-
-| Before patch 👎 | After patch 👍 |
-|--------| --- |
-| ![before](https://github.com/user-attachments/assets/daf4fee7-538c-49aa-946a-f9e939fe8fe5) | ![after](https://github.com/user-attachments/assets/0680a6f1-2fd9-4a49-ad7f-ae32758715ec) |
-
 ### Change sourceURL to generic script name
 By default, Puppeteer adds `//# sourceURL=pptr:...` to every script in `page.evaluate()`. A remote website can detect this behavior and raise red flags. 
 This patch changes it to `//# sourceURL=app.js`. You can also adjust it via environment variable:
@@ -79,6 +82,11 @@ REBROWSER_PATCHES_UTILITY_WORLD_NAME=customUtilityWorld
 REBROWSER_PATCHES_UTILITY_WORLD_NAME=0
 ```
 This env variable cannot be changed on the fly, you have to set it before running your script because it's used at the moment when the module is getting imported.
+
+| Before patch 👎 | After patch 👍 |
+|--------| --- |
+| ![before](https://github.com/user-attachments/assets/3f6719e8-37ab-4451-be19-f854d66184d0) | ![after](https://github.com/user-attachments/assets/5425ab0e-50bc-4c40-b94f-443011fdb210) |
+
 
 *Note: it's not detectable by external website scripts, but Google might use this information in their proprietary Chrome; we never know.*
 
@@ -112,6 +120,7 @@ If you already have your package patched and want to update to the latest versio
 
 | Pptr Ver                             | Release Date | Chrome Ver | Patch Support |
 |--------------------------------------|--------------|------------|---------------|
+| 23.3.x                               | 2024-09-04   | 128        | ✅             |
 | 23.2.x                               | 2024-08-29   | 128        | ✅             |
 | 23.1.x                               | 2024-08-14   | 127        | ✅             |
 | 23.0.x                               | 2024-08-07   | 127        | ✅             |
@@ -154,6 +163,16 @@ You can check that patch.exe is installed correctly by using next command:
 ```
 patch -v
 ```
+
+### Special thanks
+[zfcsoftware/puppeteer-real-browser](https://github.com/zfcsoftware/puppeteer-real-browser) - general ideas and contribution to the automation community
+
+[kaliiiiiiiiii/brotector](https://github.com/kaliiiiiiiiii/brotector) - some modern tests, algorithm to distinguish CDP vs devtools
+
+[prescience-data/harden-puppeteer](https://github.com/prescience-data/harden-puppeteer) - one of the pioneers of the execution in an isolated world
+
+[puppeteer-extra-plugin-stealth](https://github.com/berstend/puppeteer-extra/tree/master/packages/puppeteer-extra-plugin-stealth) - where it all started, big props to all the contributors and the community 🙏 berstend and co are the goats
+
 
 ### Disclaimer
 <small>
