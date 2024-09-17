@@ -7,11 +7,26 @@ Some aspects of automation libraries or browser behavior cannot be adjusted thro
 ## Do I really need any patches?
 Out of the box Puppeteer and Playwright come with some significant leaks that are easy to detect. It doesn't matter how good your proxies, fingeprints, and behaviour scripts, if you don't have it patched, you're just a big red flag for any major website.
 
-🕵️ You can easily test your automation setup for major modern detections with [rebrowser-bot-detector](https://rebrowser.github.io/rebrowser-bot-detector/) ([sources and details](https://github.com/rebrowser/rebrowser-bot-detector))
+🕵️ You can easily test your automation setup for major modern detections with [rebrowser-bot-detector](https://bot-detector.rebrowser.net/) ([sources and details](https://github.com/rebrowser/rebrowser-bot-detector))
 
 | Before the patches 👎                                                                      | After the patches 👍                                                                      |
 |--------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------|
 | ![before](https://github.com/user-attachments/assets/6fc29650-4ea9-4d27-a152-0b7b40cd2b92) | ![after](https://github.com/user-attachments/assets/2ba0db25-c0db-4015-9c83-731a355cd2e9) |
+
+## Is there an easy drop-in replacement?
+If you don't want to mess with the patches and all possible errors, there is a drop-in solution for you. These packages have simply applied rebrowser-patches on top of the original code, nothing more.
+
+Puppeteer: [rebrowser-puppeteer](https://www.npmjs.com/package/rebrowser-puppeteer) and [rebrowser-puppeteer-core](https://www.npmjs.com/package/rebrowser-puppeteer-core)
+
+Playwright: *coming soon*
+
+Here are the steps you need to follow:
+1. Open `package.json` and replace `puppeteer` and `puppeteer-core` packages with `rebrowser-puppeteer` and `rebrowser-puppeteer-core`. Don't change versions of the packages, just replace the names.
+2. Run `npm install` (or `yarn install`)
+3. Find and replace in your scripts any mentions of `puppeteer` and `puppeteer-core` with `rebrowser-puppeteer` and `rebrowser-puppeteer-core`
+4. 🚀 Go to the [rebrowser-bot-detector](https://bot-detector.rebrowser.net/) page and test your patched browser.
+
+Our goal is to maintain and support these drop-in replacement packages with the latest versions, but we mainly focus on fresh versions, so if you're still using puppeteer 13.3.7 from the early 90s, it might be a good time to upgrade. There's a high chance that it won't really break anything as the API is quite stable over time.
 
 ## Available patches
 ### Fix `Runtime.Enable` leak
@@ -27,7 +42,7 @@ In brief, it's a few lines of JavaScript on the page that are automatically call
 Our fix disables the automatic `Runtime.Enable` command on every frame. Instead, we manually create contexts with unknown IDs when a frame is created. Then, when code needs to be executed, we have implemented two approaches to get the context ID. You can choose which one to use.
 
 #### 1. Create a new isolated context via `Page.createIsolatedWorld` and save its ID from the CDP response.
-🟢 Pros: All your code will be executed in a separate isolated world, preventing page scripts from detecting your changes via MutationObserver. For more details, see the [execution-monitor test](https://github.com/prescience-data/prescience-data.github.io/blob/master/execution-monitor.html#L32).
+🟢 Pros: All your code will be executed in a separate isolated world, preventing page scripts from detecting your changes via MutationObserver and other techniques.
 
 🔴 Cons: You won't be able to access main context variables and code. While this is necessary for some use cases, the isolated context generally works fine for most scenarios. Also, web workers don't allow creating new worlds, so you can't execute your code inside a worker. This is a niche use case but may matter in some situations.
 
@@ -130,7 +145,7 @@ If you already have your package patched and want to update to the latest versio
 | 22.12.x<br/><small>and below</small> | 2024-06-21   | 126        | ❌             |
 
 ## What about Playwright support?
-Currently, this repo contains only a patch for the latest Puppeteer version. Creating these patches is time-consuming as it requires digging into someone else's code and changing it in ways it wasn't designed for.
+Currently, this repo contains only patches for the latest Puppeteer version. Creating these patches is time-consuming as it requires digging into someone else's code and changing it in ways it wasn't designed for.
 
 📣 If we see **demand from the community** for Playwright support, we'll be happy to allocate more resources to this mission. Please provide your feedback in the [issues section](https://github.com/rebrowser/rebrowser-patches/issues).
 
@@ -151,6 +166,7 @@ This package is sponsored and maintained by [Rebrowser](https://rebrowser.net). 
 
 Our cloud browsers have great success rates and come with nice features such as notifications if your library uses `Runtime.Enable` during execution or has other red flags that could be improved. [Create an account](https://rebrowser.net) today to get invited to test our bleeding-edge platform and take your automation business to the next level.
 
+[![Automated warnings](https://github.com/user-attachments/assets/5bee67ed-2ddd-4d80-9404-f65f19a865ec)](https://rebrowser.net/docs/sensitive-cdp-methods)
 
 ## Patch command on Windows
 When you try to run this patcher on a Windows machine, you will probably encounter an error because the patch command is not found. To fix this, you need to install [Git](https://git-scm.com/download/win), which includes patch.exe. After you have installed it, you need to add it to your PATH:
