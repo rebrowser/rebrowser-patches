@@ -20,11 +20,16 @@ Puppeteer: [rebrowser-puppeteer](https://www.npmjs.com/package/rebrowser-puppete
 
 Playwright: *coming soon*
 
-Here are the steps you need to follow:
+The easiest way to start using it is to fix your `package.json` to use new packages but keep the old name as an alias. This way, you don't need to change any source code of your automation. Here is how to do that:
+1. Open `package.json` and replace `"puppeteer": "^23.3.1"` and `"puppeteer-core": "^23.3.1"` with `"puppeteer": "npm:rebrowser-puppeteer@^23.3.1"` and `"puppeteer-core": "npm:rebrowser-puppeteer-core@^23.3.1"`.
+2. Run `npm install` (or `yarn install`)
+
+Another way is to actually use new packages instead of the original one. Here are the steps you need to follow:
 1. Open `package.json` and replace `puppeteer` and `puppeteer-core` packages with `rebrowser-puppeteer` and `rebrowser-puppeteer-core`. Don't change versions of the packages, just replace the names.
 2. Run `npm install` (or `yarn install`)
 3. Find and replace in your scripts any mentions of `puppeteer` and `puppeteer-core` with `rebrowser-puppeteer` and `rebrowser-puppeteer-core`
-4. 🚀 Go to the [rebrowser-bot-detector](https://bot-detector.rebrowser.net/) page and test your patched browser.
+
+🚀 That's it! Just visit the [rebrowser-bot-detector](https://bot-detector.rebrowser.net/) page and test your patched browser.
 
 Our goal is to maintain and support these drop-in replacement packages with the latest versions, but we mainly focus on fresh versions, so if you're still using puppeteer 13.3.7 from the early 90s, it might be a good time to upgrade. There's a high chance that it won't really break anything as the API is quite stable over time.
 
