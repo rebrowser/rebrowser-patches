@@ -49,7 +49,7 @@ Our fix disables the automatic `Runtime.Enable` command on every frame. Instead,
 #### 1. Create a new isolated context via `Page.createIsolatedWorld` and save its ID from the CDP response.
 🟢 Pros: All your code will be executed in a separate isolated world, preventing page scripts from detecting your changes via MutationObserver and other techniques.
 
-🔴 Cons: You won't be able to access main context variables and code. While this is necessary for some use cases, the isolated context generally works fine for most scenarios. Also, web workers don't allow creating new worlds, so you can't execute your code inside a worker. This is a niche use case but may matter in some situations.
+🔴 Cons: You won't be able to access main context variables and code. While this is necessary for some use cases, the isolated context generally works fine for most scenarios. Also, web workers don't allow creating new worlds, so you can't execute your code inside a worker. This is a niche use case but may matter in some situations. There is a workaround for this issue, please read [How to Access Main Context Objects from Isolated Context in Puppeteer & Playwright](https://rebrowser.net/blog/how-to-access-main-context-objects-from-isolated-context-in-puppeteer-and-playwright-23741).
 
 #### 2. Call `Runtime.Enable` and then immediately call `Runtime.Disable`. 
 This triggers `Runtime.executionContextCreated` events, allowing us to catch the proper context ID.
