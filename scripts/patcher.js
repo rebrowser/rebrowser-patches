@@ -12,6 +12,7 @@ import {
   getPatchBaseCmd,
   getPatcherPackagePath,
   log,
+  validPackagesNames,
 } from './utils/index.js';
 
 (async () => {
@@ -21,8 +22,7 @@ import {
     .command('patch', 'Apply patch')
     .command('unpatch', 'Reverse patch')
     .command('check', 'Check if patch is already applied')
-    .describe('packageName', 'Target package name: puppeteer-core, playwright')
-    .default('packageName', 'puppeteer-core')
+    .describe('packageName', `Target package name: ${validPackagesNames.join(', ')}`)
     .describe('packagePath', 'Path to the target package')
     .boolean('debug')
     .describe('debug', 'Enable debugging mode')
@@ -42,6 +42,10 @@ import {
   const command = cliArgs._[0]
   let commandResult
 
+  if (!packagePath && !packageName) {
+    fatalError('You need to specify either packageName or packagePath.')
+  }
+
   if (!packagePath) {
     packagePath = `${process.cwd()}/node_modules/${packageName}`
   }
@@ -50,12 +54,9 @@ import {
     fatalError(`Unknown command: ${command}`)
   }
 
-  const patchFilePath = resolve(getPatcherPackagePath(), `./patches/${packageName}/22.13.x.patch`)
-
   log('Config:')
   log(`command = ${command}, packageName = ${packageName}`)
   log(`packagePath = ${packagePath}`)
-  log(`patchFilePath = ${patchFilePath}`)
   log('------')
 
   // find package
@@ -67,10 +68,18 @@ import {
   } catch (err) {
     fatalError('Cannot read package.json', err)
   }
-  if (packageJson.name !== packageName) {
+  if (!packageName) {
+    if (!validPackagesNames.includes(packageJson.name)) {
+      fatalError(`Package name is "${packageJson.name}", but we only support ${validPackagesNames.join(', ')}.`)
+    } else {
+      packageName = packageJson.name
+    }
+  } else if (packageJson.name !== packageName) {
     fatalError(`Package name is "${packageJson.name}", but we're looking for "${packageName}". Check your package path.`)
   }
   log(`Found package "${packageJson.name}", version ${packageJson.version}`)
+
+  const patchFilePath = resolve(getPatcherPackagePath(), `./patches/${packageName}/${packageName === 'puppeteer-core' ? '22.13.x' : '1.47.x-lib'}.patch`)
 
   // check patch status
   let patchStatus

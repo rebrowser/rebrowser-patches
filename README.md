@@ -18,7 +18,7 @@ If you don't want to mess with the patches and all possible errors, there is a d
 
 Puppeteer: [rebrowser-puppeteer](https://www.npmjs.com/package/rebrowser-puppeteer) and [rebrowser-puppeteer-core](https://www.npmjs.com/package/rebrowser-puppeteer-core)
 
-Playwright: *coming soon*
+Playwright: [rebrowser-playwright](https://www.npmjs.com/package/rebrowser-playwright) and [rebrowser-playwright-core](https://www.npmjs.com/package/rebrowser-playwright-core)
 
 The easiest way to start using it is to fix your `package.json` to use new packages but keep the old name as an alias. This way, you don't need to change any source code of your automation. Here is how to do that:
 1. Open `package.json` and replace `"puppeteer": "^23.3.1"` and `"puppeteer-core": "^23.3.1"` with `"puppeteer": "npm:rebrowser-puppeteer@^23.3.1"` and `"puppeteer-core": "npm:rebrowser-puppeteer-core@^23.3.1"`.
@@ -136,7 +136,7 @@ You can see all command-line options by running `npx rebrowser-patches@latest --
 ## How to update the patches?
 If you already have your package patched and want to update to the latest version of rebrowser-patches, the easiest way would be to delete `node_modules/puppeteer-core`, then run `npm install` or `yarn install --check-files`, and then run `npx rebrowser-patches@latest patch`.
 
-## Supported versions
+## Puppeteer support
 
 | Pptr Ver                             | Release Date | Chrome Ver | Patch Support |
 |--------------------------------------|--------------|------------|---------------|
@@ -149,10 +149,16 @@ If you already have your package patched and want to update to the latest versio
 | 22.13.x                              | 2024-07-11   | 126        | ✅             |
 | 22.12.x<br/><small>and below</small> | 2024-06-21   | 126        | ❌             |
 
-## What about Playwright support?
-Currently, this repo contains only patches for the latest Puppeteer version. Creating these patches is time-consuming as it requires digging into someone else's code and changing it in ways it wasn't designed for.
+## Playwright support
+Playwright patches support `Runtime.enable` leak (only alwaysIsolated mode) and ability to change utility world name via `REBROWSER_PATCHES_UTILITY_WORLD_NAME` env variable.
 
-📣 If we see **demand from the community** for Playwright support, we'll be happy to allocate more resources to this mission. Please provide your feedback in the [issues section](https://github.com/rebrowser/rebrowser-patches/issues).
+Only JS version of Playwright is supported. Python is coming soon.
+
+| Playwright Ver                      | Release Date | Chrome Ver | Patch Support |
+|-------------------------------------|--------------|------------|---------------|
+| 1.47.2                              | 2024-09-20   | 129        | ✅             |
+| 1.47.1<br/><small>and below</small> | 2024-09-13   | 129        | ❌             |
+
 
 ## Follow the project
 We're currently developing more patches to improve web automation transparency, which will be released in this repo soon. Please support the project by clicking ⭐️ star or watch button.

@@ -1,10 +1,11 @@
 import { exec as execNative } from 'node:child_process'
-import { readdir } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 
 const promisifiedExec = promisify(execNative)
+
+export const validPackagesNames = ['puppeteer-core', 'playwright-core']
 
 export const exec = async (...args) => {
   if (isDebug()) {
