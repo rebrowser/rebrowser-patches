@@ -16,9 +16,11 @@ Out of the box Puppeteer and Playwright come with some significant leaks that ar
 ## Is there an easy drop-in replacement?
 If you don't want to mess with the patches and all possible errors, there is a drop-in solution for you. These packages have simply applied rebrowser-patches on top of the original code, nothing more.
 
-Puppeteer: [rebrowser-puppeteer](https://www.npmjs.com/package/rebrowser-puppeteer) and [rebrowser-puppeteer-core](https://www.npmjs.com/package/rebrowser-puppeteer-core)
+Puppeteer: [rebrowser-puppeteer](https://www.npmjs.com/package/rebrowser-puppeteer) ([src](https://github.com/rebrowser/rebrowser-puppeteer)) and [rebrowser-puppeteer-core](https://www.npmjs.com/package/rebrowser-puppeteer-core) ([src](https://github.com/rebrowser/rebrowser-puppeteer-core))
 
-Playwright: [rebrowser-playwright](https://www.npmjs.com/package/rebrowser-playwright) and [rebrowser-playwright-core](https://www.npmjs.com/package/rebrowser-playwright-core)
+Playwright (Node.js): [rebrowser-playwright](https://www.npmjs.com/package/rebrowser-playwright) ([src](https://github.com/rebrowser/rebrowser-playwright)) and [rebrowser-playwright-core](https://www.npmjs.com/package/rebrowser-playwright-core) ([src](https://github.com/rebrowser/rebrowser-playwright-core))
+
+Playwright (Python): [rebrowser-playwright](https://pypi.org/project/rebrowser-playwright/) ([src](https://github.com/rebrowser/rebrowser-playwright-python))
 
 The easiest way to start using it is to fix your `package.json` to use new packages but keep the old name as an alias. This way, you don't need to change any source code of your automation. Here is how to do that:
 1. Open `package.json` and replace `"puppeteer": "^23.3.1"` and `"puppeteer-core": "^23.3.1"` with `"puppeteer": "npm:rebrowser-puppeteer@^23.3.1"` and `"puppeteer-core": "npm:rebrowser-puppeteer-core@^23.3.1"`.
@@ -115,12 +117,12 @@ This package is designed to be run against an installed library. Install the Pup
 
 In the root folder of your project, run:
 ```
-npx rebrowser-patches@latest patch
+npx rebrowser-patches@latest patch --packageName puppeteer-core
 ```
 
 You can easily revert all changes with this command:
 ```
-npx rebrowser-patches@latest unpatch
+npx rebrowser-patches@latest unpatch --packageName puppeteer-core
 ```
 
 You can also patch a package by providing the full path to its folder, for example:
