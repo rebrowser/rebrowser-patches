@@ -84,14 +84,14 @@
    }
  
    setPendingDocument(documentInfo: DocumentInfo | undefined) {
-@@ -735,6 +738,38 @@
+@@ -735,6 +738,43 @@
    }
  
    _context(world: types.World): Promise<dom.FrameExecutionContext> {
 +    if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE'] !== '0') {
 +      // rebrowser-patches: use only utility context, create it on demand and cache
 +      if (this._isolatedContext !== undefined) {
-+        return this._isolatedContext
++        return Promise.resolve(this._isolatedContext)
 +      }
 +
 +      const utilityWorldName = process.env['REBROWSER_PATCHES_UTILITY_WORLD_NAME'] !== '0' ? (process.env['REBROWSER_PATCHES_UTILITY_WORLD_NAME'] || 'util') : '__playwright_utility_world__';
@@ -114,9 +114,14 @@
 +          return this._isolatedContext
 +        })
 +        .catch(error => {
-+          // probably target is closed
++          if (error.message.includes('No frame for given id found')) {
++            // ignore, frame is already gone
++            return {
++              destroyedReason: 'Frame was detached'
++            }
++          }
 +          debugLogger.log('error', error)
-+          console.error('[rebrowser-patches][frames._context] cannot create utility world')
++          console.error('[rebrowser-patches][frames._context] cannot create utility world, error:', error)
 +        })
 +    }
 +

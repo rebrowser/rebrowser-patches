@@ -84,14 +84,14 @@
    }
    setPendingDocument(documentInfo) {
      this._pendingDocument = documentInfo;
-@@ -582,6 +585,34 @@
+@@ -582,6 +585,39 @@
      return this._page._delegate.getFrameElement(this);
    }
    _context(world) {
 +    if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE'] !== '0') {
 +      // rebrowser-patches: use only utility context, create it on demand and cache
 +      if (this._isolatedContext !== undefined) {
-+        return this._isolatedContext;
++        return Promise.resolve(this._isolatedContext);
 +      }
 +      const utilityWorldName = process.env['REBROWSER_PATCHES_UTILITY_WORLD_NAME'] !== '0' ? process.env['REBROWSER_PATCHES_UTILITY_WORLD_NAME'] || 'util' : '__playwright_utility_world__';
 +      return this._page._delegate._mainFrameSession._client.send('Page.createIsolatedWorld', {
@@ -111,9 +111,14 @@
 +        this._isolatedContext = new dom.FrameExecutionContext(delegate, this, 'utility');
 +        return this._isolatedContext;
 +      }).catch(error => {
-+        // probably target is closed
++        if (error.message.includes('No frame for given id found')) {
++          // ignore, frame is already gone
++          return {
++            destroyedReason: 'Frame was detached'
++          };
++        }
 +        _debugLogger.debugLogger.log('error', error);
-+        console.error('[rebrowser-patches][frames._context] cannot create utility world');
++        console.error('[rebrowser-patches][frames._context] cannot create utility world, error:', error);
 +      });
 +    }
      return this._contextData.get(world).contextPromise.then(contextOrDestroyedReason => {
