@@ -115,12 +115,12 @@ This package is designed to be run against an installed library. Install the Pup
 
 In the root folder of your project, run:
 ```
-npx rebrowser-patches@latest patch
+npx rebrowser-patches@latest patch --packageName puppeteer-core
 ```
 
 You can easily revert all changes with this command:
 ```
-npx rebrowser-patches@latest unpatch
+npx rebrowser-patches@latest unpatch --packageName puppeteer-core
 ```
 
 You can also patch a package by providing the full path to its folder, for example:
