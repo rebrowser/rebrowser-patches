@@ -162,6 +162,18 @@ Only JS version of Playwright is supported. Python is coming soon.
 | 1.47.1<br/><small>and below</small> | 2024-09-13   | 129        | ❌             |
 
 
+## How to use `rebrowser-puppeteer` with `puppeteer-extra`?
+Use `addExtra` method, here is the example:
+```
+// before
+import puppeteer from 'puppeteer-extra'
+
+// after
+import { addExtra } from 'puppeteer-extra'
+import rebrowserPuppeteer from 'rebrowser-puppeteer'
+const puppeteer = addExtra(rebrowserPuppeteer)
+```
+
 ## Follow the project
 We're currently developing more patches to improve web automation transparency, which will be released in this repo soon. Please support the project by clicking ⭐️ star or watch button.
 
