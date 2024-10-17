@@ -53,6 +53,8 @@ Our fix disables the automatic `Runtime.Enable` command on every frame. Instead,
 
 🔴 Cons: None are discovered so far.
 
+*This approach is supported only in Puppeteer. Playwright support is coming soon, stay tuned.*
+
 #### 2. Create a new isolated context via `Page.createIsolatedWorld` and save its ID.
 🟢 Pros: All your code will be executed in a separate isolated world, preventing page scripts from detecting your changes via MutationObserver and other techniques.
 
@@ -149,7 +151,9 @@ All these versions are just wrappers around Node.js version of Playwright. You n
 
 ## Puppeteer support
 Latest fully tested version: 23.6.0 (2024-10-16)
+
 ✅ Versions 22.13.x and above are supported.
+
 ❌ Versions 22.12.x and below are not supported.
 
 ## Playwright support
