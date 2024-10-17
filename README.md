@@ -46,25 +46,31 @@ However, there's a technique that detects the usage of this command, revealing t
 For more details on this technique, read DataDome's blog post: [How New Headless Chrome & the CDP Signal Are Impacting Bot Detection](https://datadome.co/threat-research/how-new-headless-chrome-the-cdp-signal-are-impacting-bot-detection/).
 In brief, it's a few lines of JavaScript on the page that are automatically called if `Runtime.Enable` was used.
 
-Our fix disables the automatic `Runtime.Enable` command on every frame. Instead, we manually create contexts with unknown IDs when a frame is created. Then, when code needs to be executed, we have implemented two approaches to get the context ID. You can choose which one to use.
+Our fix disables the automatic `Runtime.Enable` command on every frame. Instead, we manually create contexts with unknown IDs when a frame is created. Then, when code needs to be executed, there are multiple ways to get the context ID.
 
-#### 1. Create a new isolated context via `Page.createIsolatedWorld` and save its ID from the CDP response.
+#### 1. Create a new binding in the main world, call it and save its context ID.
+🟢 Pros: The ultimate approach that keeps access to the main world and works with web workers. You don't need to change any of your existing codebase.
+
+🔴 Cons: None are discovered so far.
+
+#### 2. Create a new isolated context via `Page.createIsolatedWorld` and save its ID.
 🟢 Pros: All your code will be executed in a separate isolated world, preventing page scripts from detecting your changes via MutationObserver and other techniques.
 
 🔴 Cons: You won't be able to access main context variables and code. While this is necessary for some use cases, the isolated context generally works fine for most scenarios. Also, web workers don't allow creating new worlds, so you can't execute your code inside a worker. This is a niche use case but may matter in some situations. There is a workaround for this issue, please read [How to Access Main Context Objects from Isolated Context in Puppeteer & Playwright](https://rebrowser.net/blog/how-to-access-main-context-objects-from-isolated-context-in-puppeteer-and-playwright-23741).
 
-#### 2. Call `Runtime.Enable` and then immediately call `Runtime.Disable`. 
+#### 3. Call `Runtime.Enable` and then immediately call `Runtime.Disable`. 
 This triggers `Runtime.executionContextCreated` events, allowing us to catch the proper context ID.
 
 🟢 Pros: You will have full access to the main context.
 
 🔴 Cons: There's a slight chance that during this short timeframe, the page will call code that leads to the leak. The risk is low, as detection code is usually called during specific actions like CAPTCHA pages or login/registration forms, typically right after the page loads. Your business logic is usually called a bit later.
 
-> 🎉 Our tests show that both approaches are currently undetectable by Cloudflare or DataDome.
+> 🎉 Our tests show that all these approaches are currently undetectable by Cloudflare or DataDome.
 
 Note: you can change settings for this patch on the fly using an environment variable. This allows you to easily switch between patched and non-patched versions based on your business logic.
 
-- `REBROWSER_PATCHES_RUNTIME_FIX_MODE=alwaysIsolated` &mdash; always run all scripts in isolated context (default)
+- `REBROWSER_PATCHES_RUNTIME_FIX_MODE=addBinding` &mdash; addBinding technique (default)
+- `REBROWSER_PATCHES_RUNTIME_FIX_MODE=alwaysIsolated` &mdash; always run all scripts in isolated context
 - `REBROWSER_PATCHES_RUNTIME_FIX_MODE=enableDisable` &mdash; use Enable/Disable technique
 - `REBROWSER_PATCHES_RUNTIME_FIX_MODE=0` &mdash; completely disable this patch
 - `REBROWSER_PATCHES_DEBUG=1` &mdash; enable some debugging messages
@@ -113,7 +119,7 @@ This env variable cannot be changed on the fly, you have to set it before runnin
 *Note: it's not detectable by external website scripts, but Google might use this information in their proprietary Chrome; we never know.*
 
 ## Usage
-This package is designed to be run against an installed library. Install the Puppeteer library, then call the patcher, and it's ready to go.
+This package is designed to be run against an installed library. Install the library, then call the patcher, and it's ready to go.
 
 In the root folder of your project, run:
 ```
@@ -138,23 +144,16 @@ You can see all command-line options by running `npx rebrowser-patches@latest --
 ## How to update the patches?
 If you already have your package patched and want to update to the latest version of rebrowser-patches, the easiest way would be to delete `node_modules/puppeteer-core`, then run `npm install` or `yarn install --check-files`, and then run `npx rebrowser-patches@latest patch`.
 
-## Puppeteer support
+## How to patch Java/Python/.NET versions of Playwright?
+All these versions are just wrappers around Node.js version of Playwright. You need to find `driver` folder inside your Playwright package and run this patch with `--packagePath=$yourDriverFolder/$yourPlatform/package`.
 
-| Pptr Ver                             | Release Date | Chrome Ver | Patch Support |
-|--------------------------------------|--------------|------------|---------------|
-| 23.3.x                               | 2024-09-04   | 128        | ✅             |
-| 23.2.x                               | 2024-08-29   | 128        | ✅             |
-| 23.1.x                               | 2024-08-14   | 127        | ✅             |
-| 23.0.x                               | 2024-08-07   | 127        | ✅             |
-| 22.15.x                              | 2024-07-31   | 127        | ✅             |
-| 22.14.x                              | 2024-07-25   | 127        | ✅             |
-| 22.13.x                              | 2024-07-11   | 126        | ✅             |
-| 22.12.x<br/><small>and below</small> | 2024-06-21   | 126        | ❌             |
+## Puppeteer support
+Latest fully tested version: 23.6.0 (2024-10-16)
+✅ Versions 22.13.x and above are supported.
+❌ Versions 22.12.x and below are not supported.
 
 ## Playwright support
 Playwright patches support `Runtime.enable` leak (only alwaysIsolated mode) and ability to change utility world name via `REBROWSER_PATCHES_UTILITY_WORLD_NAME` env variable.
-
-Only JS version of Playwright is supported. Python is coming soon.
 
 | Playwright Ver                      | Release Date | Chrome Ver | Patch Support |
 |-------------------------------------|--------------|------------|---------------|
@@ -170,7 +169,7 @@ import puppeteer from 'puppeteer-extra'
 
 // after
 import { addExtra } from 'puppeteer-extra'
-import rebrowserPuppeteer from 'rebrowser-puppeteer'
+import rebrowserPuppeteer from 'rebrowser-puppeteer-core'
 const puppeteer = addExtra(rebrowserPuppeteer)
 ```
 
