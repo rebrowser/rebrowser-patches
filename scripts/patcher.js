@@ -79,7 +79,7 @@ import {
   }
   log(`Found package "${packageJson.name}", version ${packageJson.version}`)
 
-  const patchFilePath = resolve(getPatcherPackagePath(), `./patches/${packageName}/${packageName === 'puppeteer-core' ? '22.13.x' : '1.47.x-lib'}.patch`)
+  const patchFilePath = resolve(getPatcherPackagePath(), `./patches/${packageName}/${packageName === 'puppeteer-core' ? '23.6.x' : '1.47.x-lib'}.patch`)
 
   // check patch status
   let patchStatus

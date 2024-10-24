@@ -49,7 +49,7 @@ In brief, it's a few lines of JavaScript on the page that are automatically call
 Our fix disables the automatic `Runtime.Enable` command on every frame. Instead, we manually create contexts with unknown IDs when a frame is created. Then, when code needs to be executed, there are multiple ways to get the context ID.
 
 #### 1. Create a new binding in the main world, call it and save its context ID.
-🟢 Pros: The ultimate approach that keeps access to the main world and works with web workers. You don't need to change any of your existing codebase.
+🟢 Pros: The ultimate approach that keeps access to the main world and works with web workers and iframes. You don't need to change any of your existing codebase.
 
 🔴 Cons: None are discovered so far.
 
@@ -152,9 +152,9 @@ All these versions are just wrappers around Node.js version of Playwright. You n
 ## Puppeteer support
 Latest fully tested version: 23.6.0 (2024-10-16)
 
-✅ Versions 22.13.x and above are supported.
+✅ Versions 23.6.x and above are supported.
 
-❌ Versions 22.12.x and below are not supported.
+❌ Versions 23.5.x and below are not supported.
 
 ## Playwright support
 Playwright patches support `Runtime.enable` leak (only alwaysIsolated mode) and ability to change utility world name via `REBROWSER_PATCHES_UTILITY_WORLD_NAME` env variable.
