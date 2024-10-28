@@ -150,20 +150,25 @@ If you already have your package patched and want to update to the latest versio
 All these versions are just wrappers around Node.js version of Playwright. You need to find `driver` folder inside your Playwright package and run this patch with `--packagePath=$yourDriverFolder/$yourPlatform/package`.
 
 ## Puppeteer support
-Latest fully tested version: 23.6.0 (2024-10-16)
+Latest fully tested version: 23.6.0 (released 2024-10-16)
 
 ✅ Versions 23.6.x and above are supported.
 
 ❌ Versions 23.5.x and below are not supported.
 
 ## Playwright support
-Playwright patches support `Runtime.enable` leak (only alwaysIsolated mode) and ability to change utility world name via `REBROWSER_PATCHES_UTILITY_WORLD_NAME` env variable.
+Playwright patches include:
+- `Runtime.enable` leak: `addBinding` and `alwaysIsolated`modes.
+- Ability to change utility world name via `REBROWSER_PATCHES_UTILITY_WORLD_NAME` env variable.
+- More patches are coming, star and follow the repo.
 
-| Playwright Ver                      | Release Date | Chrome Ver | Patch Support |
-|-------------------------------------|--------------|------------|---------------|
-| 1.47.2                              | 2024-09-20   | 129        | ✅             |
-| 1.47.1<br/><small>and below</small> | 2024-09-13   | 129        | ❌             |
+Important: `page.pause()` method doesn't work with the enabled fix, it needs more investigation. You can just disable the fix completely while debugging using `REBROWSER_PATCHES_RUNTIME_FIX_MODE=0` env variable.
 
+Latest fully tested version: 1.48.2 (released 2024-10-25)
+
+✅ Versions 1.47.2 and above are supported.
+
+❌ Versions 1.47.1 and below are not supported.
 
 ## How to use `rebrowser-puppeteer` with `puppeteer-extra`?
 Use `addExtra` method, here is the example:
@@ -190,7 +195,7 @@ Always keep in mind: the less you manipulate browser internals via JS injections
 If you've tried everything and still face issues, try asking a question in the issues section or consider using cloud solutions from Rebrowser.
 
 ## What is Rebrowser?
-This package is sponsored and maintained by [Rebrowser](https://rebrowser.net). We allow you to scale your automation in the cloud with hundreds of unique fingerprints.
+This package is sponsored and maintained by [Rebrowser](https://rebrowser.net). We allow you to scale your browser automation and web scraping in the cloud with hundreds of unique fingerprints.
 
 Our cloud browsers have great success rates and come with nice features such as notifications if your library uses `Runtime.Enable` during execution or has other red flags that could be improved. [Create an account](https://rebrowser.net) today to get invited to test our bleeding-edge platform and take your automation business to the next level.
 
