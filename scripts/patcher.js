@@ -24,6 +24,7 @@ import {
     .command('check', 'Check if patch is already applied')
     .describe('packageName', `Target package name: ${validPackagesNames.join(', ')}`)
     .describe('packagePath', 'Path to the target package')
+    .describe('codeTarget', 'What code to patch: src or lib')
     .boolean('debug')
     .describe('debug', 'Enable debugging mode')
     .demandCommand(1, 1, 'Error: choose a command (patch, unpatch, check)')
@@ -32,6 +33,7 @@ import {
   let {
     packageName,
     packagePath,
+    codeTarget = 'lib',
     debug,
   } = cliArgs
 
@@ -54,8 +56,12 @@ import {
     fatalError(`Unknown command: ${command}`)
   }
 
+  if (!['src', 'lib'].includes(codeTarget)) {
+    fatalError(`Unknown codeTarget: ${codeTarget}`)
+  }
+
   log('Config:')
-  log(`command = ${command}, packageName = ${packageName}`)
+  log(`command = ${command}, packageName = ${packageName}, codeTarget = ${codeTarget}`)
   log(`packagePath = ${packagePath}`)
   log('------')
 
@@ -79,7 +85,7 @@ import {
   }
   log(`Found package "${packageJson.name}", version ${packageJson.version}`)
 
-  const patchFilePath = resolve(getPatcherPackagePath(), `./patches/${packageName}/${packageName === 'puppeteer-core' ? '23.6.x' : '1.47.x-lib'}.patch`)
+  const patchFilePath = resolve(getPatcherPackagePath(), `./patches/${packageName}/${codeTarget}.patch`)
 
   // check patch status
   let patchStatus

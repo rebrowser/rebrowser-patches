@@ -23,7 +23,7 @@ Playwright (Node.js): [rebrowser-playwright](https://www.npmjs.com/package/rebro
 Playwright (Python): [rebrowser-playwright](https://pypi.org/project/rebrowser-playwright/) ([src](https://github.com/rebrowser/rebrowser-playwright-python))
 
 The easiest way to start using it is to fix your `package.json` to use new packages but keep the old name as an alias. This way, you don't need to change any source code of your automation. Here is how to do that:
-1. Open `package.json` and replace `"puppeteer": "^23.3.1"` and `"puppeteer-core": "^23.3.1"` with `"puppeteer": "npm:rebrowser-puppeteer@^23.3.1"` and `"puppeteer-core": "npm:rebrowser-puppeteer-core@^23.3.1"`.
+1. Open `package.json` and replace `"puppeteer": "^23.3.1"` and `"puppeteer-core": "^23.3.1"` with `"puppeteer": "npm:rebrowser-puppeteer@^23.3.1"` and `"puppeteer-core": "npm:rebrowser-puppeteer-core@^23.3.1"`. Note: 23.3.1 is just an example, check the latest version on [npm](https://www.npmjs.com/package/rebrowser-puppeteer-core).
 2. Run `npm install` (or `yarn install`)
 
 Another way is to actually use new packages instead of the original one. Here are the steps you need to follow:
@@ -53,8 +53,6 @@ Our fix disables the automatic `Runtime.Enable` command on every frame. Instead,
 
 🔴 Cons: None are discovered so far.
 
-*This approach is supported only in Puppeteer. Playwright support is coming soon, stay tuned.*
-
 #### 2. Create a new isolated context via `Page.createIsolatedWorld` and save its ID.
 🟢 Pros: All your code will be executed in a separate isolated world, preventing page scripts from detecting your changes via MutationObserver and other techniques.
 
@@ -74,7 +72,7 @@ Note: you can change settings for this patch on the fly using an environment var
 - `REBROWSER_PATCHES_RUNTIME_FIX_MODE=addBinding` &mdash; addBinding technique (default)
 - `REBROWSER_PATCHES_RUNTIME_FIX_MODE=alwaysIsolated` &mdash; always run all scripts in isolated context
 - `REBROWSER_PATCHES_RUNTIME_FIX_MODE=enableDisable` &mdash; use Enable/Disable technique
-- `REBROWSER_PATCHES_RUNTIME_FIX_MODE=0` &mdash; completely disable this patch
+- `REBROWSER_PATCHES_RUNTIME_FIX_MODE=0` &mdash; completely disable fix for this leak
 - `REBROWSER_PATCHES_DEBUG=1` &mdash; enable some debugging messages
 
 Remember, you can set these variables in different ways, for example, in code:
@@ -150,11 +148,7 @@ If you already have your package patched and want to update to the latest versio
 All these versions are just wrappers around Node.js version of Playwright. You need to find `driver` folder inside your Playwright package and run this patch with `--packagePath=$yourDriverFolder/$yourPlatform/package`.
 
 ## Puppeteer support
-Latest fully tested version: 23.6.0 (released 2024-10-16)
-
-✅ Versions 23.6.x and above are supported.
-
-❌ Versions 23.5.x and below are not supported.
+✅ Latest fully tested version: 23.10.1 (released 2024-12-04)
 
 ## Playwright support
 Playwright patches include:
@@ -164,11 +158,9 @@ Playwright patches include:
 
 Important: `page.pause()` method doesn't work with the enabled fix, it needs more investigation. You can just disable the fix completely while debugging using `REBROWSER_PATCHES_RUNTIME_FIX_MODE=0` env variable.
 
-Latest fully tested version: 1.48.2 (released 2024-10-25)
+These patches work only for Chrome for now. If you really want to use it with WebKit or Firefox, please open a new issue.
 
-✅ Versions 1.47.2 and above are supported.
-
-❌ Versions 1.47.1 and below are not supported.
+✅ Latest fully tested version: 1.49.0 (released 2024-11-18)
 
 ## How to use `rebrowser-puppeteer` with `puppeteer-extra`?
 Use `addExtra` method, here is the example:
@@ -215,6 +207,8 @@ patch -v
 
 ### Special thanks
 [zfcsoftware/puppeteer-real-browser](https://github.com/zfcsoftware/puppeteer-real-browser) - general ideas and contribution to the automation community
+
+[Kaliiiiiiiiii-Vinyzu/patchright](https://github.com/Kaliiiiiiiiii-Vinyzu/patchright) - set of patches to fix Playwright leaks
 
 [kaliiiiiiiiii/brotector](https://github.com/kaliiiiiiiiii/brotector) - some modern tests, algorithm to distinguish CDP vs devtools
 

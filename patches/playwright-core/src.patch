@@ -1,0 +1,323 @@
+--- a/src/server/chromium/crConnection.ts	
++++ b/src/server/chromium/crConnection.ts	
+@@ -197,6 +197,153 @@
+     }
+     this._callbacks.clear();
+   }
++
++  async __re__emitExecutionContext({
++    world,
++    targetId,
++    frame = null
++  }) {
++    const fixMode = process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE'] || 'addBinding'
++    const utilityWorldName = process.env['REBROWSER_PATCHES_UTILITY_WORLD_NAME'] !== '0' ? (process.env['REBROWSER_PATCHES_UTILITY_WORLD_NAME'] || 'util') : '__playwright_utility_world__';
++    process.env['REBROWSER_PATCHES_DEBUG'] && console.log(`[rebrowser-patches][crSession] targetId = ${targetId}, world = ${world}, frame = ${frame ? 'Y' : 'N'}, fixMode = ${fixMode}`)
++
++    let getWorldPromise
++    if (fixMode === 'addBinding') {
++      if (world === 'utility') {
++        getWorldPromise = this.__re__getIsolatedWorld({
++          client: this,
++          frameId: targetId,
++          worldName: utilityWorldName,
++        })
++          .then((contextId) => {
++            return {
++              id: contextId,
++              // use UTILITY_WORLD_NAME value from crPage.ts otherwise _onExecutionContextCreated will ignore it
++              name: '__playwright_utility_world__',
++              auxData: {
++                frameId: targetId,
++                isDefault: false
++              }
++            }
++          })
++      } else if (world === 'main') {
++        getWorldPromise = this.__re__getMainWorld({
++          client: this,
++          frameId: targetId,
++          isWorker: frame === null
++        })
++          .then((contextId) => {
++            return {
++              id: contextId,
++              name: '',
++              auxData: {
++                frameId: targetId,
++                isDefault: true
++              }
++            }
++          })
++      }
++    } else if (fixMode === 'alwaysIsolated') {
++      // use only utility context
++      getWorldPromise = this.__re__getIsolatedWorld({
++        client: this,
++        frameId: targetId,
++        worldName: utilityWorldName,
++      })
++        .then((contextId) => {
++          // make it look as main world
++          return {
++            id: contextId,
++            name: '',
++            auxData: {
++              frameId: targetId,
++              isDefault: true
++            }
++          }
++        })
++    }
++
++    const contextPayload = await getWorldPromise
++    this.emit('Runtime.executionContextCreated', {
++      context: contextPayload
++    })
++  }
++  async __re__getMainWorld({ client, frameId, isWorker = false }: any) {
++    let contextId: any;
++
++    // random name to make it harder to detect for any 3rd party script by watching window object and events
++    const randomName = [...Array(Math.floor(Math.random() * (10 + 1)) + 10)].map(() => Math.random().toString(36)[2]).join('');
++    process.env['REBROWSER_PATCHES_DEBUG'] && console.log(`[rebrowser-patches][getMainWorld] binding name = ${randomName}`);
++
++    // add the binding
++    await client.send('Runtime.addBinding', {
++      name: randomName,
++    });
++
++    // listen for 'Runtime.bindingCalled' event
++    const bindingCalledHandler = ({ name, payload, executionContextId }: any) => {
++      process.env['REBROWSER_PATCHES_DEBUG'] && console.log('[rebrowser-patches][bindingCalledHandler]', {
++        name,
++        payload,
++        executionContextId
++      });
++      if (contextId > 0) {
++        // already acquired the id
++        return;
++      }
++      if (name !== randomName) {
++        // ignore irrelevant bindings
++        return;
++      }
++      if (payload !== frameId) {
++        // ignore irrelevant frames
++        return;
++      }
++      contextId = executionContextId;
++      // remove this listener
++      client.off('Runtime.bindingCalled', bindingCalledHandler);
++    };
++    client.on('Runtime.bindingCalled', bindingCalledHandler);
++
++    if (isWorker) {
++      // workers don't support `Page.addScriptToEvaluateOnNewDocument` and `Page.createIsolatedWorld`, but there are no iframes inside of them, so it's safe to just use Runtime.evaluate
++      await client.send('Runtime.evaluate', {
++        expression: `this['${randomName}']('${frameId}')`,
++      });
++    } else {
++      // we could call the binding right from `addScriptToEvaluateOnNewDocument`, but this way it will be called in all existing frames and it's hard to distinguish children from the parent
++      await client.send('Page.addScriptToEvaluateOnNewDocument', {
++        source: `document.addEventListener('${randomName}', (e) => self['${randomName}'](e.detail.frameId))`,
++        runImmediately: true,
++      });
++
++      // create new isolated world for this frame
++      const createIsolatedWorldResult = await client.send('Page.createIsolatedWorld', {
++        frameId,
++        // use randomName for worldName to distinguish from normal utility world
++        worldName: randomName,
++        grantUniveralAccess: true,
++      });
++
++      // emit event in the specific frame from the isolated world
++      await client.send('Runtime.evaluate', {
++        expression: `document.dispatchEvent(new CustomEvent('${randomName}', { detail: { frameId: '${frameId}' } }))`,
++        contextId: createIsolatedWorldResult.executionContextId,
++      });
++    }
++
++    process.env['REBROWSER_PATCHES_DEBUG'] && console.log(`[rebrowser-patches][getMainWorld] result:`, { contextId });
++    return contextId;
++  }
++  async __re__getIsolatedWorld({ client, frameId, worldName }: any) {
++    const createIsolatedWorldResult = await client.send('Page.createIsolatedWorld', {
++      frameId,
++      worldName,
++      grantUniveralAccess: true,
++    });
++    process.env['REBROWSER_PATCHES_DEBUG'] && console.log(`[rebrowser-patches][getIsolatedWorld] result:`, createIsolatedWorldResult);
++    return createIsolatedWorldResult.executionContextId;
++  }
+ }
+ 
+ export class CDPSession extends EventEmitter {
+
+--- a/src/server/chromium/crDevTools.ts	
++++ b/src/server/chromium/crDevTools.ts	
+@@ -66,7 +66,11 @@
+       }).catch(e => null);
+     });
+     Promise.all([
+-      session.send('Runtime.enable'),
++      (() => {
++        if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE'] === '0') {
++          return session.send('Runtime.enable', {})
++        }
++      })(),
+       session.send('Runtime.addBinding', { name: kBindingName }),
+       session.send('Page.enable'),
+       session.send('Page.addScriptToEvaluateOnNewDocument', { source: `
+
+--- a/src/server/chromium/crPage.ts	
++++ b/src/server/chromium/crPage.ts	
+@@ -534,7 +534,11 @@
+       }),
+       this._client.send('Log.enable', {}),
+       lifecycleEventsEnabled = this._client.send('Page.setLifecycleEventsEnabled', { enabled: true }),
+-      this._client.send('Runtime.enable', {}),
++      (() => {
++        if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE'] === '0') {
++          return this._client.send('Runtime.enable', {})
++        }
++      })(),
+       this._client.send('Runtime.addBinding', { name: PageBinding.kPlaywrightBinding }),
+       this._client.send('Page.addScriptToEvaluateOnNewDocument', {
+         source: '',
+@@ -743,14 +747,17 @@
+     }
+ 
+     const url = event.targetInfo.url;
+-    const worker = new Worker(this._page, url);
++    const worker = new Worker(this._page, url, event.targetInfo.targetId, session);
+     this._page._addWorker(event.sessionId, worker);
+     this._workerSessions.set(event.sessionId, session);
+     session.once('Runtime.executionContextCreated', async event => {
+       worker._createExecutionContext(new CRExecutionContext(session, event.context));
+     });
+-    // This might fail if the target is closed before we initialize.
+-    session._sendMayFail('Runtime.enable');
++    if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE'] === '0') {
++      // This might fail if the target is closed before we initialize.
++      session._sendMayFail('Runtime.enable');
++    }
++
+     // TODO: attribute workers to the right frame.
+     this._crPage._networkManager.addSession(session, this._page._frameManager.frame(this._targetId) ?? undefined).catch(() => {});
+     session._sendMayFail('Runtime.runIfWaitingForDebugger');
+
+--- a/src/server/chromium/crServiceWorker.ts	
++++ b/src/server/chromium/crServiceWorker.ts	
+@@ -44,7 +44,9 @@
+       this._networkManager.addSession(session, undefined, true /* isMain */).catch(() => {});
+     }
+ 
+-    session.send('Runtime.enable', {}).catch(e => { });
++    if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE'] === '0') {
++      session.send('Runtime.enable', {}).catch(e => { });
++    }
+     session.send('Runtime.runIfWaitingForDebugger').catch(e => { });
+     session.on('Inspector.targetReloadedAfterCrash', () => {
+       // Resume service worker after restart.
+
+--- a/src/server/frames.ts	
++++ b/src/server/frames.ts	
+@@ -536,6 +536,8 @@
+       this._startNetworkIdleTimer();
+     this._page.mainFrame()._recalculateNetworkIdle(this);
+     this._onLifecycleEvent('commit');
++    const crSession = (this._page._delegate._sessions.get(this._id) || this._page._delegate._mainFrameSession)._client
++    crSession.emit('Runtime.executionContextsCleared')
+   }
+ 
+   setPendingDocument(documentInfo: DocumentInfo | undefined) {
+@@ -739,12 +741,34 @@
+     return this._page._delegate.getFrameElement(this);
+   }
+ 
+-  _context(world: types.World): Promise<dom.FrameExecutionContext> {
+-    return this._contextData.get(world)!.contextPromise.then(contextOrDestroyedReason => {
+-      if (contextOrDestroyedReason instanceof js.ExecutionContext)
+-        return contextOrDestroyedReason;
+-      throw new Error(contextOrDestroyedReason.destroyedReason);
+-    });
++  _context(world: types.World, useContextPromise = false): Promise<dom.FrameExecutionContext> {
++    if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE'] === '0' || this._contextData.get(world).context || useContextPromise) {
++      return this._contextData.get(world)!.contextPromise.then(contextOrDestroyedReason => {
++        if (contextOrDestroyedReason instanceof js.ExecutionContext)
++          return contextOrDestroyedReason;
++        throw new Error(contextOrDestroyedReason.destroyedReason);
++      });
++    }
++
++    const crSession = (this._page._delegate._sessions.get(this._id) || this._page._delegate._mainFrameSession)._client
++    return crSession.__re__emitExecutionContext({
++      world,
++      targetId: this._id,
++      frame: this
++    })
++      .then(() => {
++        return this._context(world, true)
++      })
++      .catch(error => {
++        if (error.message.includes('No frame for given id found')) {
++          // ignore, frame is already gone
++          return {
++            destroyedReason: 'Frame was detached'
++          }
++        }
++        debugLogger.log('error', error)
++        console.error('[rebrowser-patches][frames._context] cannot get world, error:', error)
++      })
+   }
+ 
+   _mainContext(): Promise<dom.FrameExecutionContext> {
+
+--- a/src/server/page.ts	
++++ b/src/server/page.ts	
+@@ -815,12 +815,16 @@
+   private _executionContextCallback: (value: js.ExecutionContext) => void;
+   _existingExecutionContext: js.ExecutionContext | null = null;
+   readonly openScope = new LongStandingScope();
++  private _targetId: string;
++  private _session: any;
+ 
+-  constructor(parent: SdkObject, url: string) {
++  constructor(parent: SdkObject, url: string, targetId: string, session: any) {
+     super(parent, 'worker');
+     this._url = url;
+     this._executionContextCallback = () => {};
+     this._executionContextPromise = new Promise(x => this._executionContextCallback = x);
++    this._targetId = targetId
++    this._session = session
+   }
+ 
+   _createExecutionContext(delegate: js.ExecutionContextDelegate) {
+@@ -839,12 +843,23 @@
+     this.openScope.close(new Error('Worker closed'));
+   }
+ 
++  async getExecutionContext() {
++    if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE'] !== '0' && !this._existingExecutionContext) {
++      await this._session.__re__emitExecutionContext({
++        world: 'main',
++        targetId: this._targetId,
++      })
++    }
++
++    return this._executionContextPromise
++  }
++
+   async evaluateExpression(expression: string, isFunction: boolean | undefined, arg: any): Promise<any> {
+-    return js.evaluateExpression(await this._executionContextPromise, expression, { returnByValue: true, isFunction }, arg);
++    return js.evaluateExpression(await this.getExecutionContext(), expression, { returnByValue: true, isFunction }, arg);
+   }
+ 
+   async evaluateExpressionHandle(expression: string, isFunction: boolean | undefined, arg: any): Promise<any> {
+-    return js.evaluateExpression(await this._executionContextPromise, expression, { returnByValue: false, isFunction }, arg);
++    return js.evaluateExpression(await this.getExecutionContext(), expression, { returnByValue: false, isFunction }, arg);
+   }
+ }
+ 
