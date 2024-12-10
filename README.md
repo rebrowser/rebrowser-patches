@@ -160,7 +160,7 @@ Important: `page.pause()` method doesn't work with the enabled fix, it needs mor
 
 These patches work only for Chrome for now. If you really want to use it with WebKit or Firefox, please open a new issue.
 
-✅ Latest fully tested version: 1.49.0 (released 2024-11-18)
+✅ Latest fully tested version: 1.49.1 (released 2024-12-10)
 
 ## How to use `rebrowser-puppeteer` with `puppeteer-extra`?
 Use `addExtra` method, here is the example:

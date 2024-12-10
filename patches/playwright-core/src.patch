@@ -321,3 +321,14 @@
    }
  }
  
+@@ -872,6 +887,10 @@
+   }
+ 
+   static async dispatch(page: Page, payload: string, context: dom.FrameExecutionContext) {
++    if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE'] !== '0' && !payload.includes('{')) {
++      // ignore as it's not a JSON but a string from addBinding method
++      return
++    }
+     const { name, seq, serializedArgs } = JSON.parse(payload) as BindingPayload;
+     try {
+       assert(context.world);

@@ -339,7 +339,7 @@
 +            process.env['REBROWSER_PATCHES_DEBUG'] && console.log(`[rebrowser-patches] onFrameNavigated, navigationType = ${navigationType}, id = ${framePayload.id}, url = ${framePayload.url}`);
 +            for (const worldSymbol of [IsolatedWorlds_js_1.MAIN_WORLD, IsolatedWorlds_js_1.PUPPETEER_WORLD]) {
 +                // @ts-ignore
-+                if (frame.worlds[worldSymbol].context) {
++                if (frame?.worlds[worldSymbol].context) {
 +                    // @ts-ignore
 +                    const frameOrWorker = frame.worlds[worldSymbol].environment;
 +                    if ('clearDocumentHandle' in frameOrWorker) {
@@ -511,664 +511,7 @@
 
 --- a/lib/es5-iife/puppeteer-core-browser.js	
 +++ b/lib/es5-iife/puppeteer-core-browser.js	
-@@ -186,7 +186,7 @@
-    limitations under the License.
-    
-    */
--  // node_modules/tslib/tslib.es6.mjs
-+  // lib/esm/third_party/rxjs/rxjs.js
-   var extendStatics = function (d, b) {
-     extendStatics = Object.setPrototypeOf || {
-       
-@@ -428,13 +428,9 @@
-       }, reject);
-     }
-   }
--
--  // node_modules/rxjs/dist/esm5/internal/util/isFunction.js
-   function isFunction(value) {
-     return typeof value === "function";
-   }
--
--  // node_modules/rxjs/dist/esm5/internal/util/createErrorClass.js
-   function createErrorClass(createImpl) {
-     var _super = function (instance) {
-       Error.call(instance);
-@@ -445,8 +441,6 @@
-     ctorFunc.prototype.constructor = ctorFunc;
-     return ctorFunc;
-   }
--
--  // node_modules/rxjs/dist/esm5/internal/util/UnsubscriptionError.js
-   var UnsubscriptionError = createErrorClass(function (_super) {
-     return function UnsubscriptionErrorImpl(errors) {
-       _super(this);
-@@ -457,16 +451,12 @@
-       this.errors = errors;
-     };
-   });
--
--  // node_modules/rxjs/dist/esm5/internal/util/arrRemove.js
-   function arrRemove(arr, item) {
-     if (arr) {
-       var index = arr.indexOf(item);
-       0 <= index && arr.splice(index, 1);
-     }
-   }
--
--  // node_modules/rxjs/dist/esm5/internal/Subscription.js
-   var Subscription = function () {
-     function Subscription2(initialTeardown) {
-       this.initialTeardown = initialTeardown;
-@@ -602,8 +592,6 @@
-       finalizer.unsubscribe();
-     }
-   }
--
--  // node_modules/rxjs/dist/esm5/internal/config.js
-   var config = {
-     onUnhandledError: null,
-     onStoppedNotification: null,
-@@ -611,8 +599,6 @@
-     useDeprecatedSynchronousErrorHandling: false,
-     useDeprecatedNextContext: false
-   };
--
--  // node_modules/rxjs/dist/esm5/internal/scheduler/timeoutProvider.js
-   var timeoutProvider = {
-     setTimeout: function (handler, timeout) {
-       var args = [];
-@@ -626,8 +612,6 @@
-     },
-     delegate: void 0
-   };
--
--  // node_modules/rxjs/dist/esm5/internal/util/reportUnhandledError.js
-   function reportUnhandledError(err) {
-     timeoutProvider.setTimeout(function () {
-       {
-@@ -635,16 +619,12 @@
-       }
-     });
-   }
--
--  // node_modules/rxjs/dist/esm5/internal/util/noop.js
-   function noop() {}
-   function errorContext(cb) {
-     {
-       cb();
-     }
-   }
--
--  // node_modules/rxjs/dist/esm5/internal/Subscriber.js
-   var Subscriber = function (_super) {
-     __extends(Subscriber2, _super);
-     function Subscriber2(destination) {
-@@ -794,18 +774,12 @@
-     error: defaultErrorHandler,
-     complete: noop
-   };
--
--  // node_modules/rxjs/dist/esm5/internal/symbol/observable.js
-   var observable = function () {
-     return typeof Symbol === "function" && Symbol.observable || "@@observable";
-   }();
--
--  // node_modules/rxjs/dist/esm5/internal/util/identity.js
-   function identity(x) {
-     return x;
-   }
--
--  // node_modules/rxjs/dist/esm5/internal/util/pipe.js
-   function pipe() {
-     var fns = [];
-     for (var _i = 0; _i < arguments.length; _i++) {
-@@ -826,8 +800,6 @@
-       }, input);
-     };
-   }
--
--  // node_modules/rxjs/dist/esm5/internal/Observable.js
-   var Observable = function () {
-     function Observable2(subscribe) {
-       if (subscribe) {
-@@ -920,8 +892,6 @@
-   function isSubscriber(value) {
-     return value && value instanceof Subscriber || isObserver(value) && isSubscription(value);
-   }
--
--  // node_modules/rxjs/dist/esm5/internal/util/lift.js
-   function hasLift(source) {
-     return isFunction(source === null || source === void 0 ? void 0 : source.lift);
-   }
-@@ -939,8 +909,6 @@
-       throw new TypeError("Unable to lift unknown Observable type");
-     };
-   }
--
--  // node_modules/rxjs/dist/esm5/internal/operators/OperatorSubscriber.js
-   function createOperatorSubscriber(destination, onNext, onComplete, onError, onFinalize) {
-     return new OperatorSubscriber(destination, onNext, onComplete, onError, onFinalize);
-   }
-@@ -987,8 +955,6 @@
-     };
-     return OperatorSubscriber2;
-   }(Subscriber);
--
--  // node_modules/rxjs/dist/esm5/internal/util/ObjectUnsubscribedError.js
-   var ObjectUnsubscribedError = createErrorClass(function (_super) {
-     return function ObjectUnsubscribedErrorImpl() {
-       _super(this);
-@@ -996,8 +962,6 @@
-       this.message = "object unsubscribed";
-     };
-   });
--
--  // node_modules/rxjs/dist/esm5/internal/Subject.js
-   var Subject = function (_super) {
-     __extends(Subject2, _super);
-     function Subject2() {
-@@ -1159,16 +1123,12 @@
-     };
-     return AnonymousSubject2;
-   }(Subject);
--
--  // node_modules/rxjs/dist/esm5/internal/scheduler/dateTimestampProvider.js
-   var dateTimestampProvider = {
-     now: function () {
-       return (dateTimestampProvider.delegate || Date).now();
-     },
-     delegate: void 0
-   };
--
--  // node_modules/rxjs/dist/esm5/internal/ReplaySubject.js
-   var ReplaySubject = function (_super) {
-     __extends(ReplaySubject2, _super);
-     function ReplaySubject2(_bufferSize, _windowTime, _timestampProvider) {
-@@ -1239,8 +1199,6 @@
-     };
-     return ReplaySubject2;
-   }(Subject);
--
--  // node_modules/rxjs/dist/esm5/internal/scheduler/Action.js
-   var Action = function (_super) {
-     __extends(Action2, _super);
-     function Action2(scheduler, work) {
-@@ -1251,8 +1209,6 @@
-     };
-     return Action2;
-   }(Subscription);
--
--  // node_modules/rxjs/dist/esm5/internal/scheduler/intervalProvider.js
-   var intervalProvider = {
-     setInterval: function (handler, timeout) {
-       var args = [];
-@@ -1266,8 +1222,6 @@
-     },
-     delegate: void 0
-   };
--
--  // node_modules/rxjs/dist/esm5/internal/scheduler/AsyncAction.js
-   var AsyncAction = function (_super) {
-     __extends(AsyncAction2, _super);
-     function AsyncAction2(scheduler, work) {
-@@ -1358,8 +1312,6 @@
-     };
-     return AsyncAction2;
-   }(Action);
--
--  // node_modules/rxjs/dist/esm5/internal/Scheduler.js
-   var Scheduler = function () {
-     function Scheduler2(schedulerActionCtor, now) {
-       if (now === void 0) {
-@@ -1377,8 +1329,6 @@
-     Scheduler2.now = dateTimestampProvider.now;
-     return Scheduler2;
-   }();
--
--  // node_modules/rxjs/dist/esm5/internal/scheduler/AsyncScheduler.js
-   var AsyncScheduler = function (_super) {
-     __extends(AsyncScheduler2, _super);
-     function AsyncScheduler2(SchedulerAction, now) {
-@@ -1413,22 +1363,14 @@
-     };
-     return AsyncScheduler2;
-   }(Scheduler);
--
--  // node_modules/rxjs/dist/esm5/internal/scheduler/async.js
-   var asyncScheduler = new AsyncScheduler(AsyncAction);
-   var async = asyncScheduler;
--
--  // node_modules/rxjs/dist/esm5/internal/observable/empty.js
-   var EMPTY = new Observable(function (subscriber) {
-     return subscriber.complete();
-   });
--
--  // node_modules/rxjs/dist/esm5/internal/util/isScheduler.js
-   function isScheduler(value) {
-     return value && isFunction(value.schedule);
-   }
--
--  // node_modules/rxjs/dist/esm5/internal/util/args.js
-   function last(arr) {
-     return arr[arr.length - 1];
-   }
-@@ -1438,33 +1380,21 @@
-   function popNumber(args, defaultValue) {
-     return typeof last(args) === "number" ? args.pop() : defaultValue;
-   }
--
--  // node_modules/rxjs/dist/esm5/internal/util/isArrayLike.js
-   var isArrayLike = function (x) {
-     return x && typeof x.length === "number" && typeof x !== "function";
-   };
--
--  // node_modules/rxjs/dist/esm5/internal/util/isPromise.js
-   function isPromise(value) {
-     return isFunction(value === null || value === void 0 ? void 0 : value.then);
-   }
--
--  // node_modules/rxjs/dist/esm5/internal/util/isInteropObservable.js
-   function isInteropObservable(input) {
-     return isFunction(input[observable]);
-   }
--
--  // node_modules/rxjs/dist/esm5/internal/util/isAsyncIterable.js
-   function isAsyncIterable(obj) {
-     return Symbol.asyncIterator && isFunction(obj === null || obj === void 0 ? void 0 : obj[Symbol.asyncIterator]);
-   }
--
--  // node_modules/rxjs/dist/esm5/internal/util/throwUnobservableError.js
-   function createInvalidObservableTypeError(input) {
-     return new TypeError("You provided " + (input !== null && typeof input === "object" ? "an invalid object" : "'" + input + "'") + " where a stream was expected. You can provide an Observable, Promise, ReadableStream, Array, AsyncIterable, or Iterable.");
-   }
--
--  // node_modules/rxjs/dist/esm5/internal/symbol/iterator.js
-   function getSymbolIterator() {
-     if (typeof Symbol !== "function" || !Symbol.iterator) {
-       return "@@iterator";
-@@ -1472,13 +1402,9 @@
-     return Symbol.iterator;
-   }
-   var iterator = getSymbolIterator();
--
--  // node_modules/rxjs/dist/esm5/internal/util/isIterable.js
-   function isIterable(input) {
-     return isFunction(input === null || input === void 0 ? void 0 : input[iterator]);
-   }
--
--  // node_modules/rxjs/dist/esm5/internal/util/isReadableStreamLike.js
-   function readableStreamLikeToAsyncGenerator(readableStream) {
-     return __asyncGenerator(this, arguments, function readableStreamLikeToAsyncGenerator_1() {
-       var reader, _a, value, done;
-@@ -1519,8 +1445,6 @@
-   function isReadableStreamLike(obj) {
-     return isFunction(obj === null || obj === void 0 ? void 0 : obj.getReader);
-   }
--
--  // node_modules/rxjs/dist/esm5/internal/observable/innerFrom.js
-   function innerFrom(input) {
-     if (input instanceof Observable) {
-       return input;
-@@ -1663,8 +1587,6 @@
-       });
-     });
-   }
--
--  // node_modules/rxjs/dist/esm5/internal/util/executeSchedule.js
-   function executeSchedule(parentSubscription, scheduler, work, delay2, repeat) {
-     if (delay2 === void 0) {
-       delay2 = 0;
-@@ -1685,8 +1607,6 @@
-       return scheduleSubscription;
-     }
-   }
--
--  // node_modules/rxjs/dist/esm5/internal/operators/observeOn.js
-   function observeOn(scheduler, delay2) {
-     if (delay2 === void 0) {
-       delay2 = 0;
-@@ -1707,8 +1627,6 @@
-       }));
-     });
-   }
--
--  // node_modules/rxjs/dist/esm5/internal/operators/subscribeOn.js
-   function subscribeOn(scheduler, delay2) {
-     if (delay2 === void 0) {
-       delay2 = 0;
-@@ -1719,18 +1637,12 @@
-       }, delay2));
-     });
-   }
--
--  // node_modules/rxjs/dist/esm5/internal/scheduled/scheduleObservable.js
-   function scheduleObservable(input, scheduler) {
-     return innerFrom(input).pipe(subscribeOn(scheduler), observeOn(scheduler));
-   }
--
--  // node_modules/rxjs/dist/esm5/internal/scheduled/schedulePromise.js
-   function schedulePromise(input, scheduler) {
-     return innerFrom(input).pipe(subscribeOn(scheduler), observeOn(scheduler));
-   }
--
--  // node_modules/rxjs/dist/esm5/internal/scheduled/scheduleArray.js
-   function scheduleArray(input, scheduler) {
-     return new Observable(function (subscriber) {
-       var i = 0;
-@@ -1746,8 +1658,6 @@
-       });
-     });
-   }
--
--  // node_modules/rxjs/dist/esm5/internal/scheduled/scheduleIterable.js
-   function scheduleIterable(input, scheduler) {
-     return new Observable(function (subscriber) {
-       var iterator2;
-@@ -1775,8 +1685,6 @@
-       };
-     });
-   }
--
--  // node_modules/rxjs/dist/esm5/internal/scheduled/scheduleAsyncIterable.js
-   function scheduleAsyncIterable(input, scheduler) {
-     if (!input) {
-       throw new Error("Iterable cannot be null");
-@@ -1796,13 +1704,9 @@
-       });
-     });
-   }
--
--  // node_modules/rxjs/dist/esm5/internal/scheduled/scheduleReadableStreamLike.js
-   function scheduleReadableStreamLike(input, scheduler) {
-     return scheduleAsyncIterable(readableStreamLikeToAsyncGenerator(input), scheduler);
-   }
--
--  // node_modules/rxjs/dist/esm5/internal/scheduled/scheduled.js
-   function scheduled(input, scheduler) {
-     if (input != null) {
-       if (isInteropObservable(input)) {
-@@ -1826,13 +1730,9 @@
-     }
-     throw createInvalidObservableTypeError(input);
-   }
--
--  // node_modules/rxjs/dist/esm5/internal/observable/from.js
-   function from(input, scheduler) {
-     return scheduler ? scheduled(input, scheduler) : innerFrom(input);
-   }
--
--  // node_modules/rxjs/dist/esm5/internal/observable/of.js
-   function of() {
-     var args = [];
-     for (var _i = 0; _i < arguments.length; _i++) {
-@@ -1841,8 +1741,6 @@
-     var scheduler = popScheduler(args);
-     return from(args, scheduler);
-   }
--
--  // node_modules/rxjs/dist/esm5/internal/util/EmptyError.js
-   var EmptyError = createErrorClass(function (_super) {
-     return function EmptyErrorImpl() {
-       _super(this);
-@@ -1850,8 +1748,6 @@
-       this.message = "no elements in sequence";
-     };
-   });
--
--  // node_modules/rxjs/dist/esm5/internal/firstValueFrom.js
-   function firstValueFrom(source, config2) {
-     return new Promise(function (resolve, reject) {
-       var subscriber = new SafeSubscriber({
-@@ -1869,13 +1765,9 @@
-       source.subscribe(subscriber);
-     });
-   }
--
--  // node_modules/rxjs/dist/esm5/internal/util/isDate.js
-   function isValidDate(value) {
-     return value instanceof Date && !isNaN(value);
-   }
--
--  // node_modules/rxjs/dist/esm5/internal/operators/map.js
-   function map(project, thisArg) {
-     return operate(function (source, subscriber) {
-       var index = 0;
-@@ -1884,8 +1776,6 @@
-       }));
-     });
-   }
--
--  // node_modules/rxjs/dist/esm5/internal/util/mapOneOrManyArgs.js
-   var isArray = Array.isArray;
-   function callOrApply(fn, args) {
-     return isArray(args) ? fn.apply(void 0, __spreadArray([], __read(args))) : fn(args);
-@@ -1895,8 +1785,6 @@
-       return callOrApply(fn, args);
-     });
-   }
--
--  // node_modules/rxjs/dist/esm5/internal/operators/mergeInternals.js
-   function mergeInternals(source, subscriber, project, concurrent, onBeforeNext, expand, innerSubScheduler, additionalFinalizer) {
-     var buffer = [];
-     var active = 0;
-@@ -1951,8 +1839,6 @@
-       additionalFinalizer === null || additionalFinalizer === void 0 ? void 0 : additionalFinalizer();
-     };
-   }
--
--  // node_modules/rxjs/dist/esm5/internal/operators/mergeMap.js
-   function mergeMap(project, resultSelector, concurrent) {
-     if (concurrent === void 0) {
-       concurrent = Infinity;
-@@ -1970,21 +1856,15 @@
-       return mergeInternals(source, subscriber, project, concurrent);
-     });
-   }
--
--  // node_modules/rxjs/dist/esm5/internal/operators/mergeAll.js
-   function mergeAll(concurrent) {
-     if (concurrent === void 0) {
-       concurrent = Infinity;
-     }
-     return mergeMap(identity, concurrent);
-   }
--
--  // node_modules/rxjs/dist/esm5/internal/operators/concatAll.js
-   function concatAll() {
-     return mergeAll(1);
-   }
--
--  // node_modules/rxjs/dist/esm5/internal/observable/concat.js
-   function concat() {
-     var args = [];
-     for (var _i = 0; _i < arguments.length; _i++) {
-@@ -1992,15 +1872,11 @@
-     }
-     return concatAll()(from(args, popScheduler(args)));
-   }
--
--  // node_modules/rxjs/dist/esm5/internal/observable/defer.js
-   function defer(observableFactory) {
-     return new Observable(function (subscriber) {
-       innerFrom(observableFactory()).subscribe(subscriber);
-     });
-   }
--
--  // node_modules/rxjs/dist/esm5/internal/observable/fromEvent.js
-   var nodeEventEmitterMethods = ["addListener", "removeListener"];
-   var eventTargetMethods = ["addEventListener", "removeEventListener"];
-   var jqueryMethods = ["on", "off"];
-@@ -2059,8 +1935,6 @@
-   function isEventTarget(target) {
-     return isFunction(target.addEventListener) && isFunction(target.removeEventListener);
-   }
--
--  // node_modules/rxjs/dist/esm5/internal/observable/timer.js
-   function timer(dueTime, intervalOrScheduler, scheduler) {
-     if (dueTime === void 0) {
-       dueTime = 0;
-@@ -2084,8 +1958,6 @@
-       }, due);
-     });
-   }
--
--  // node_modules/rxjs/dist/esm5/internal/observable/merge.js
-   function merge() {
-     var args = [];
-     for (var _i = 0; _i < arguments.length; _i++) {
-@@ -2096,17 +1968,11 @@
-     var sources = args;
-     return !sources.length ? EMPTY : sources.length === 1 ? innerFrom(sources[0]) : mergeAll(concurrent)(from(sources, scheduler));
-   }
--
--  // node_modules/rxjs/dist/esm5/internal/observable/never.js
-   var NEVER = new Observable(noop);
--
--  // node_modules/rxjs/dist/esm5/internal/util/argsOrArgArray.js
-   var isArray3 = Array.isArray;
-   function argsOrArgArray(args) {
-     return args.length === 1 && isArray3(args[0]) ? args[0] : args;
-   }
--
--  // node_modules/rxjs/dist/esm5/internal/operators/filter.js
-   function filter(predicate, thisArg) {
-     return operate(function (source, subscriber) {
-       var index = 0;
-@@ -2115,8 +1981,6 @@
-       }));
-     });
-   }
--
--  // node_modules/rxjs/dist/esm5/internal/observable/race.js
-   function race() {
-     var sources = [];
-     for (var _i = 0; _i < arguments.length; _i++) {
-@@ -2144,8 +2008,6 @@
-       }
-     };
-   }
--
--  // node_modules/rxjs/dist/esm5/internal/operators/catchError.js
-   function catchError(selector) {
-     return operate(function (source, subscriber) {
-       var innerSub = null;
-@@ -2168,8 +2030,6 @@
-       }
-     });
-   }
--
--  // node_modules/rxjs/dist/esm5/internal/operators/defaultIfEmpty.js
-   function defaultIfEmpty(defaultValue) {
-     return operate(function (source, subscriber) {
-       var hasValue = false;
-@@ -2184,8 +2044,6 @@
-       }));
-     });
-   }
--
--  // node_modules/rxjs/dist/esm5/internal/operators/take.js
-   function take(count) {
-     return count <= 0 ? function () {
-       return EMPTY;
-@@ -2201,15 +2059,11 @@
-       }));
-     });
-   }
--
--  // node_modules/rxjs/dist/esm5/internal/operators/ignoreElements.js
-   function ignoreElements() {
-     return operate(function (source, subscriber) {
-       source.subscribe(createOperatorSubscriber(subscriber, noop));
-     });
-   }
--
--  // node_modules/rxjs/dist/esm5/internal/operators/throwIfEmpty.js
-   function throwIfEmpty(errorFactory) {
-     if (errorFactory === void 0) {
-       errorFactory = defaultErrorFactory;
-@@ -2227,8 +2081,6 @@
-   function defaultErrorFactory() {
-     return new EmptyError();
-   }
--
--  // node_modules/rxjs/dist/esm5/internal/operators/first.js
-   function first(predicate, defaultValue) {
-     var hasDefaultValue = arguments.length >= 2;
-     return function (source) {
-@@ -2239,8 +2091,6 @@
-       }));
-     };
-   }
--
--  // node_modules/rxjs/dist/esm5/internal/operators/mergeScan.js
-   function mergeScan(accumulator, seed, concurrent) {
-     if (concurrent === void 0) {
-       concurrent = Infinity;
-@@ -2256,8 +2106,6 @@
-       });
-     });
-   }
--
--  // node_modules/rxjs/dist/esm5/internal/operators/raceWith.js
-   function raceWith() {
-     var otherSources = [];
-     for (var _i = 0; _i < arguments.length; _i++) {
-@@ -2267,8 +2115,6 @@
-       raceInit(__spreadArray([source], __read(otherSources)))(subscriber);
-     });
-   }
--
--  // node_modules/rxjs/dist/esm5/internal/operators/retry.js
-   function retry(configOrCount) {
-     if (configOrCount === void 0) {
-       configOrCount = Infinity;
-@@ -2332,8 +2178,6 @@
-       subscribeForRetry();
-     });
-   }
--
--  // node_modules/rxjs/dist/esm5/internal/operators/startWith.js
-   function startWith() {
-     var values = [];
-     for (var _i = 0; _i < arguments.length; _i++) {
-@@ -2344,8 +2188,6 @@
-       (scheduler ? concat(values, source, scheduler) : concat(values, source)).subscribe(subscriber);
-     });
-   }
--
--  // node_modules/rxjs/dist/esm5/internal/operators/switchMap.js
-   function switchMap(project, resultSelector) {
-     return operate(function (source, subscriber) {
-       var innerSubscriber = null;
-@@ -2370,8 +2212,6 @@
-       }));
-     });
-   }
--
--  // node_modules/rxjs/dist/esm5/internal/operators/takeUntil.js
-   function takeUntil(notifier) {
-     return operate(function (source, subscriber) {
-       innerFrom(notifier).subscribe(createOperatorSubscriber(subscriber, function () {
-@@ -2380,8 +2220,6 @@
-       !subscriber.closed && source.subscribe(subscriber);
-     });
-   }
--
--  // node_modules/rxjs/dist/esm5/internal/operators/tap.js
-   function tap(observerOrNext, error, complete) {
-     var tapObserver = isFunction(observerOrNext) || error || complete ? {
-       next: observerOrNext,
-@@ -2435,7 +2273,7 @@
-   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-   SOFTWARE.
-    */
--  // ../../node_modules/mitt/dist/mitt.mjs
-+  // lib/esm/third_party/mitt/mitt.js
-   function mitt_default(n) {
-     return {
-       all: n = n || /* @__PURE__ */new Map(),
-@@ -3419,7 +3257,9 @@
+@@ -3419,7 +3419,9 @@
    /**
     * @internal
     */
@@ -1179,7 +522,7 @@
    /**
     * @internal
     */
-@@ -3428,6 +3268,10 @@
+@@ -3428,6 +3430,10 @@
     * @internal
     */
    function getSourceUrlComment(url) {
@@ -1190,16 +533,7 @@
      return `//# sourceURL=${url}`;
    }
    /**
-@@ -5046,7 +4890,7 @@
-   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-   SOFTWARE.
-    */
--  // ../../node_modules/parsel-js/dist/parsel.js
-+  // lib/esm/third_party/parsel-js/parsel-js.js
-   _defineProperty(PQueryHandler, "querySelectorAll", (element, selector, {
-     pQuerySelectorAll
-   }) => {
-@@ -15500,6 +15344,7 @@
+@@ -15500,6 +15506,7 @@
        _classPrivateFieldInitSpec(this, _client8, void 0);
        _classPrivateFieldInitSpec(this, _world3, void 0);
        _classPrivateFieldInitSpec(this, _id5, void 0);
@@ -1207,7 +541,7 @@
        _classPrivateFieldInitSpec(this, _name3, void 0);
        _classPrivateFieldInitSpec(this, _disposables, new DisposableStack());
        // Contains mapping from functions that should be bound to Puppeteer functions.
-@@ -15515,16 +15360,22 @@
+@@ -15515,16 +15522,22 @@
        if (contextPayload.name) {
          _classPrivateFieldSet(_name3, this, contextPayload.name);
        }
@@ -1237,7 +571,7 @@
        clientEmitter.on('Runtime.consoleAPICalled', _assertClassBrand(_ExecutionContext_brand, this, _onConsoleAPI).bind(this));
        clientEmitter.on(exports.CDPSessionEvent.Disconnected, () => {
          this[disposeSymbol]();
-@@ -15646,6 +15497,181 @@
+@@ -15646,6 +15659,181 @@
      async evaluateHandle(pageFunction, ...args) {
        return await _assertClassBrand(_ExecutionContext_brand, this, _evaluate).call(this, false, pageFunction, ...args);
      }
@@ -1419,7 +753,7 @@
      [disposeSymbol]() {
        _classPrivateFieldGet(_disposables, this).dispose();
        this.emit('disposed', undefined);
-@@ -15746,6 +15772,12 @@
+@@ -15746,6 +15934,12 @@
      }
    }
    async function _evaluate(returnByValue, pageFunction, ...args) {
@@ -1432,7 +766,7 @@
      const sourceUrlComment = getSourceUrlComment(getSourcePuppeteerURLIfAvailable(pageFunction)?.toString() ?? PuppeteerURL.INTERNAL_URL);
      if (isString(pageFunction)) {
        const contextId = _classPrivateFieldGet(_id5, this);
-@@ -15906,6 +15938,27 @@
+@@ -15906,6 +16100,27 @@
  
    /**
     * @license
@@ -1460,7 +794,7 @@
     * Copyright 2019 Google Inc.
     * SPDX-License-Identifier: Apache-2.0
     */
-@@ -15979,6 +16032,8 @@
+@@ -15979,6 +16194,8 @@
        if (!context) {
          context = await _assertClassBrand(_IsolatedWorld_brand, this, _waitForExecutionContext).call(this);
        }
@@ -1469,7 +803,7 @@
        const {
          object
        } = await this.client.send('DOM.resolveNode', {
-@@ -16034,15 +16089,9 @@
+@@ -16034,15 +16251,9 @@
  
    /**
     * @license
@@ -1486,7 +820,7 @@
    function _onContextDisposed() {
      _classPrivateFieldSet(_context, this, undefined);
      if ('clearDocumentHandle' in _classPrivateFieldGet(_frameOrWorker, this)) {
-@@ -16065,6 +16114,21 @@
+@@ -16065,6 +16276,21 @@
     * Waits for the next context to be set on the isolated world.
     */
    async function _waitForExecutionContext() {
@@ -1508,7 +842,7 @@
      const error = new Error('Execution context was destroyed');
      const result = await firstValueFrom(fromEmitterEvent(_classPrivateFieldGet(_emitter2, this), 'context').pipe(raceWith(fromEmitterEvent(_classPrivateFieldGet(_emitter2, this), 'disposed').pipe(map(() => {
        // The message has to match the CDP message expected by the WaitTask class.
-@@ -16072,20 +16136,6 @@
+@@ -16072,20 +16298,6 @@
      })), timeout(this.timeoutSettings.timeout()))));
      return result;
    }
@@ -1529,7 +863,7 @@
    const puppeteerToProtocolLifecycle = new Map([['load', 'load'], ['domcontentloaded', 'DOMContentLoaded'], ['networkidle0', 'networkIdle'], ['networkidle2', 'networkAlmostIdle']]);
    /**
     * @internal
-@@ -17889,6 +17939,10 @@
+@@ -17889,6 +18101,10 @@
          _assertClassBrand(_FrameManager_brand, this, _onFrameStoppedLoading).call(this, event.frameId);
        });
        session.on('Runtime.executionContextCreated', async event => {
@@ -1540,7 +874,7 @@
          await _classPrivateFieldGet(_frameTreeHandled, this)?.valueOrThrow();
          _assertClassBrand(_FrameManager_brand, this, _onExecutionContextCreated).call(this, event.context, session);
        });
-@@ -17912,13 +17966,39 @@
+@@ -17912,13 +18128,39 @@
            _classPrivateFieldGet(_frameTreeHandled, this)?.resolve();
          }), client.send('Page.setLifecycleEventsEnabled', {
            enabled: true
@@ -1583,7 +917,7 @@
        } catch (error) {
          _classPrivateFieldGet(_frameTreeHandled, this)?.resolve();
          // The target might have been closed before the initialization finished.
-@@ -18114,6 +18194,23 @@
+@@ -18114,6 +18356,23 @@
        }
        this._frameTree.addFrame(frame);
      }
@@ -1593,7 +927,7 @@
 +      process.env['REBROWSER_PATCHES_DEBUG'] && console.log(`[rebrowser-patches] onFrameNavigated, navigationType = ${navigationType}, id = ${framePayload.id}, url = ${framePayload.url}`);
 +      for (const worldSymbol of [MAIN_WORLD, PUPPETEER_WORLD]) {
 +        // @ts-ignore
-+        if (frame.worlds[worldSymbol].context) {
++        if (frame?.worlds[worldSymbol].context) {
 +          // @ts-ignore
 +          const frameOrWorker = frame.worlds[worldSymbol].environment;
 +          if ('clearDocumentHandle' in frameOrWorker) {
@@ -1607,7 +941,7 @@
      frame = await this._frameTree.waitForFrame(frameId);
      frame._navigated(framePayload);
      this.emit(exports.FrameManagerEvent.FrameNavigated, frame);
-@@ -18137,6 +18234,23 @@
+@@ -18137,6 +18396,23 @@
          frameId: frame._id,
          worldName: name,
          grantUniveralAccess: true
@@ -1631,7 +965,7 @@
        }).catch(debugError);
      }));
      _classPrivateFieldGet(_isolatedWorlds, this).add(key);
-@@ -20265,6 +20379,10 @@
+@@ -20265,6 +20541,10 @@
        _classPrivateFieldSet(_targetType2, this, targetType);
        _classPrivateFieldSet(_world4, this, new IsolatedWorld(this, new TimeoutSettings()));
        _classPrivateFieldGet(_client17, this).once('Runtime.executionContextCreated', async event => {
@@ -1642,7 +976,7 @@
          _classPrivateFieldGet(_world4, this).setContext(new ExecutionContext(client, event.context, _classPrivateFieldGet(_world4, this)));
        });
        _classPrivateFieldGet(_world4, this).emitter.on('consoleapicalled', async event => {
-@@ -20280,8 +20398,22 @@
+@@ -20280,8 +20560,22 @@
        _classPrivateFieldGet(_client17, this).once(exports.CDPSessionEvent.Disconnected, () => {
          _classPrivateFieldGet(_world4, this).dispose();
        });
@@ -1667,7 +1001,7 @@
      }
      mainRealm() {
        return _classPrivateFieldGet(_world4, this);
-@@ -22189,6 +22321,10 @@
+@@ -22189,6 +22483,10 @@
      async newPage() {
        return await _classPrivateFieldGet(_defaultContext, this).newPage();
      }
@@ -2020,7 +1354,7 @@
 +            process.env['REBROWSER_PATCHES_DEBUG'] && console.log(`[rebrowser-patches] onFrameNavigated, navigationType = ${navigationType}, id = ${framePayload.id}, url = ${framePayload.url}`);
 +            for (const worldSymbol of [MAIN_WORLD, PUPPETEER_WORLD]) {
 +                // @ts-ignore
-+                if (frame.worlds[worldSymbol].context) {
++                if (frame?.worlds[worldSymbol].context) {
 +                    // @ts-ignore
 +                    const frameOrWorker = frame.worlds[worldSymbol].environment;
 +                    if ('clearDocumentHandle' in frameOrWorker) {

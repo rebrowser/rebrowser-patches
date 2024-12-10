@@ -324,3 +324,14 @@
        returnByValue: false,
        isFunction
      }, arg);
+@@ -677,6 +690,10 @@
+     this.internal = name.startsWith('__pw');
+   }
+   static async dispatch(page, payload, context) {
++    if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE'] !== '0' && !payload.includes('{')) {
++      // ignore as it's not a JSON but a string from addBinding method
++      return;
++    }
+     const {
+       name,
+       seq,

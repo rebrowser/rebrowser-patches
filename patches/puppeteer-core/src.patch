@@ -330,7 +330,7 @@
 +      process.env['REBROWSER_PATCHES_DEBUG'] && console.log(`[rebrowser-patches] onFrameNavigated, navigationType = ${navigationType}, id = ${framePayload.id}, url = ${framePayload.url}`)
 +      for (const worldSymbol of [MAIN_WORLD, PUPPETEER_WORLD]) {
 +        // @ts-ignore
-+        if (frame.worlds[worldSymbol].context) {
++        if (frame?.worlds[worldSymbol].context) {
 +          // @ts-ignore
 +          const frameOrWorker = frame.worlds[worldSymbol].environment
 +          if ('clearDocumentHandle' in frameOrWorker) {
