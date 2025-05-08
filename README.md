@@ -148,7 +148,7 @@ If you already have your package patched and want to update to the latest versio
 All these versions are just wrappers around Node.js version of Playwright. You need to find `driver` folder inside your Playwright package and run this patch with `--packagePath=$yourDriverFolder/$yourPlatform/package`.
 
 ## Puppeteer support
-✅ Latest fully tested version: 23.10.1 (released 2024-12-04)
+✅ Latest fully tested version: 24.8.1 (released 2025-05-06)
 
 ## Playwright support
 Playwright patches include:
@@ -160,7 +160,7 @@ Important: `page.pause()` method doesn't work with the enabled fix, it needs mor
 
 These patches work only for Chrome for now. If you really want to use it with WebKit or Firefox, please open a new issue.
 
-✅ Latest fully tested version: 1.49.1 (released 2024-12-10)
+✅ Latest fully tested version: 1.52.0 (released 2025-04-17)
 
 ## How to use `rebrowser-puppeteer` with `puppeteer-extra`?
 Use `addExtra` method, here is the example:

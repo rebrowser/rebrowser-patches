@@ -6,12 +6,12 @@
      newPage(): Promise<Page>;
 +    _connection(): Connection;
      _createPageInContext(contextId?: string): Promise<Page>;
-     targets(): CdpTarget[];
-     target(): CdpTarget;
+     installExtension(path: string): Promise<string>;
+     uninstallExtension(id: string): Promise<void>;
 
 --- a/lib/cjs/puppeteer/cdp/Browser.js	
 +++ b/lib/cjs/puppeteer/cdp/Browser.js	
-@@ -182,6 +182,10 @@
+@@ -175,6 +175,10 @@
      async newPage() {
          return await this.#defaultContext.newPage();
      }
@@ -86,7 +86,7 @@
          clientEmitter.on('Runtime.consoleAPICalled', this.#onConsoleAPI.bind(this));
          clientEmitter.on(CDPSession_js_1.CDPSessionEvent.Disconnected, () => {
              this[disposable_js_1.disposeSymbol]();
-@@ -329,7 +336,181 @@
+@@ -328,7 +335,181 @@
      async evaluateHandle(pageFunction, ...args) {
          return await this.#evaluate(false, pageFunction, ...args);
      }
@@ -271,7 +271,7 @@
 
 --- a/lib/cjs/puppeteer/cdp/FrameManager.js	
 +++ b/lib/cjs/puppeteer/cdp/FrameManager.js	
-@@ -150,6 +150,10 @@
+@@ -154,6 +154,10 @@
              this.#onFrameStoppedLoading(event.frameId);
          });
          session.on('Runtime.executionContextCreated', async (event) => {
@@ -282,7 +282,7 @@
              await this.#frameTreeHandled?.valueOrThrow();
              this.#onExecutionContextCreated(event.context, session);
          });
-@@ -174,9 +178,16 @@
+@@ -178,9 +182,16 @@
                      this.#frameTreeHandled?.resolve();
                  }),
                  client.send('Page.setLifecycleEventsEnabled', { enabled: true }),
@@ -302,7 +302,7 @@
                  ...(frame
                      ? Array.from(this.#scriptsToEvaluateOnNewDocument.values())
                      : []).map(script => {
-@@ -186,6 +197,26 @@
+@@ -190,6 +201,26 @@
                      return frame?.addExposedFunctionBinding(binding);
                  }),
              ]);
@@ -329,7 +329,7 @@
          }
          catch (error) {
              this.#frameTreeHandled?.resolve();
-@@ -354,6 +385,23 @@
+@@ -358,6 +389,23 @@
              }
              this._frameTree.addFrame(frame);
          }
@@ -353,7 +353,7 @@
          frame = await this._frameTree.waitForFrame(frameId);
          frame._navigated(framePayload);
          this.emit(FrameManagerEvents_js_1.FrameManagerEvent.FrameNavigated, frame);
-@@ -381,6 +429,24 @@
+@@ -385,6 +433,24 @@
                  worldName: name,
                  grantUniveralAccess: true,
              })
@@ -456,11 +456,10 @@
              this.#world.setContext(new ExecutionContext_js_1.ExecutionContext(client, event.context, this.#world));
          });
          this.#world.emitter.on('consoleapicalled', async (event) => {
-@@ -40,8 +44,23 @@
-         this.#client.once(CDPSession_js_1.CDPSessionEvent.Disconnected, () => {
-             this.#world.dispose();
+@@ -42,7 +46,22 @@
          });
--        // This might fail if the target is closed before we receive all execution contexts.
+         // This might fail if the target is closed before we receive all execution contexts.
+         networkManager?.addClient(this.#client).catch(util_js_1.debugError);
 -        this.#client.send('Runtime.enable').catch(util_js_1.debugError);
 +        if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE'] !== '0') {
 +            // @ts-ignore
@@ -476,7 +475,6 @@
 +            this.#world.setContext(new ExecutionContext_js_1.ExecutionContext(client, contextPayload, this.#world));
 +        }
 +        else {
-+            // This might fail if the target is closed before we receive all execution contexts.
 +            this.#client.send('Runtime.enable').catch(util_js_1.debugError);
 +        }
      }
@@ -485,7 +483,7 @@
 
 --- a/lib/cjs/puppeteer/common/util.js	
 +++ b/lib/cjs/puppeteer/common/util.js	
-@@ -261,7 +261,10 @@
+@@ -252,7 +252,10 @@
  /**
   * @internal
   */
@@ -497,7 +495,7 @@
  /**
   * @internal
   */
-@@ -270,6 +273,10 @@
+@@ -261,6 +264,10 @@
   * @internal
   */
  function getSourceUrlComment(url) {
@@ -511,7 +509,7 @@
 
 --- a/lib/es5-iife/puppeteer-core-browser.js	
 +++ b/lib/es5-iife/puppeteer-core-browser.js	
-@@ -3419,7 +3419,9 @@
+@@ -3561,7 +3561,9 @@
    /**
     * @internal
     */
@@ -522,7 +520,7 @@
    /**
     * @internal
     */
-@@ -3428,6 +3430,10 @@
+@@ -3570,6 +3572,10 @@
     * @internal
     */
    function getSourceUrlComment(url) {
@@ -533,7 +531,7 @@
      return `//# sourceURL=${url}`;
    }
    /**
-@@ -15500,6 +15506,7 @@
+@@ -15625,6 +15631,7 @@
        _classPrivateFieldInitSpec(this, _client8, void 0);
        _classPrivateFieldInitSpec(this, _world3, void 0);
        _classPrivateFieldInitSpec(this, _id5, void 0);
@@ -541,7 +539,7 @@
        _classPrivateFieldInitSpec(this, _name3, void 0);
        _classPrivateFieldInitSpec(this, _disposables, new DisposableStack());
        // Contains mapping from functions that should be bound to Puppeteer functions.
-@@ -15515,16 +15522,22 @@
+@@ -15640,16 +15647,22 @@
        if (contextPayload.name) {
          _classPrivateFieldSet(_name3, this, contextPayload.name);
        }
@@ -571,7 +569,7 @@
        clientEmitter.on('Runtime.consoleAPICalled', _assertClassBrand(_ExecutionContext_brand, this, _onConsoleAPI).bind(this));
        clientEmitter.on(exports.CDPSessionEvent.Disconnected, () => {
          this[disposeSymbol]();
-@@ -15646,6 +15659,181 @@
+@@ -15771,6 +15784,181 @@
      async evaluateHandle(pageFunction, ...args) {
        return await _assertClassBrand(_ExecutionContext_brand, this, _evaluate).call(this, false, pageFunction, ...args);
      }
@@ -753,7 +751,7 @@
      [disposeSymbol]() {
        _classPrivateFieldGet(_disposables, this).dispose();
        this.emit('disposed', undefined);
-@@ -15746,6 +15934,12 @@
+@@ -15870,6 +16058,12 @@
      }
    }
    async function _evaluate(returnByValue, pageFunction, ...args) {
@@ -766,7 +764,7 @@
      const sourceUrlComment = getSourceUrlComment(getSourcePuppeteerURLIfAvailable(pageFunction)?.toString() ?? PuppeteerURL.INTERNAL_URL);
      if (isString(pageFunction)) {
        const contextId = _classPrivateFieldGet(_id5, this);
-@@ -15906,6 +16100,27 @@
+@@ -16036,6 +16230,27 @@
  
    /**
     * @license
@@ -794,7 +792,7 @@
     * Copyright 2019 Google Inc.
     * SPDX-License-Identifier: Apache-2.0
     */
-@@ -15979,6 +16194,8 @@
+@@ -16109,6 +16324,8 @@
        if (!context) {
          context = await _assertClassBrand(_IsolatedWorld_brand, this, _waitForExecutionContext).call(this);
        }
@@ -803,7 +801,7 @@
        const {
          object
        } = await this.client.send('DOM.resolveNode', {
-@@ -16034,15 +16251,9 @@
+@@ -16164,15 +16381,9 @@
  
    /**
     * @license
@@ -820,7 +818,7 @@
    function _onContextDisposed() {
      _classPrivateFieldSet(_context, this, undefined);
      if ('clearDocumentHandle' in _classPrivateFieldGet(_frameOrWorker, this)) {
-@@ -16065,6 +16276,21 @@
+@@ -16195,6 +16406,21 @@
     * Waits for the next context to be set on the isolated world.
     */
    async function _waitForExecutionContext() {
@@ -842,7 +840,7 @@
      const error = new Error('Execution context was destroyed');
      const result = await firstValueFrom(fromEmitterEvent(_classPrivateFieldGet(_emitter2, this), 'context').pipe(raceWith(fromEmitterEvent(_classPrivateFieldGet(_emitter2, this), 'disposed').pipe(map(() => {
        // The message has to match the CDP message expected by the WaitTask class.
-@@ -16072,20 +16298,6 @@
+@@ -16202,20 +16428,6 @@
      })), timeout(this.timeoutSettings.timeout()))));
      return result;
    }
@@ -863,7 +861,7 @@
    const puppeteerToProtocolLifecycle = new Map([['load', 'load'], ['domcontentloaded', 'DOMContentLoaded'], ['networkidle0', 'networkIdle'], ['networkidle2', 'networkAlmostIdle']]);
    /**
     * @internal
-@@ -17889,6 +18101,10 @@
+@@ -18012,6 +18224,10 @@
          _assertClassBrand(_FrameManager_brand, this, _onFrameStoppedLoading).call(this, event.frameId);
        });
        session.on('Runtime.executionContextCreated', async event => {
@@ -874,7 +872,7 @@
          await _classPrivateFieldGet(_frameTreeHandled, this)?.valueOrThrow();
          _assertClassBrand(_FrameManager_brand, this, _onExecutionContextCreated).call(this, event.context, session);
        });
-@@ -17912,13 +18128,39 @@
+@@ -18035,13 +18251,39 @@
            _classPrivateFieldGet(_frameTreeHandled, this)?.resolve();
          }), client.send('Page.setLifecycleEventsEnabled', {
            enabled: true
@@ -917,7 +915,7 @@
        } catch (error) {
          _classPrivateFieldGet(_frameTreeHandled, this)?.resolve();
          // The target might have been closed before the initialization finished.
-@@ -18114,6 +18356,23 @@
+@@ -18243,6 +18485,23 @@
        }
        this._frameTree.addFrame(frame);
      }
@@ -941,7 +939,7 @@
      frame = await this._frameTree.waitForFrame(frameId);
      frame._navigated(framePayload);
      this.emit(exports.FrameManagerEvent.FrameNavigated, frame);
-@@ -18137,6 +18396,23 @@
+@@ -18266,6 +18525,23 @@
          frameId: frame._id,
          worldName: name,
          grantUniveralAccess: true
@@ -965,7 +963,7 @@
        }).catch(debugError);
      }));
      _classPrivateFieldGet(_isolatedWorlds, this).add(key);
-@@ -20265,6 +20541,10 @@
+@@ -20394,6 +20670,10 @@
        _classPrivateFieldSet(_targetType2, this, targetType);
        _classPrivateFieldSet(_world4, this, new IsolatedWorld(this, new TimeoutSettings()));
        _classPrivateFieldGet(_client17, this).once('Runtime.executionContextCreated', async event => {
@@ -976,11 +974,10 @@
          _classPrivateFieldGet(_world4, this).setContext(new ExecutionContext(client, event.context, _classPrivateFieldGet(_world4, this)));
        });
        _classPrivateFieldGet(_world4, this).emitter.on('consoleapicalled', async event => {
-@@ -20280,8 +20560,22 @@
-       _classPrivateFieldGet(_client17, this).once(exports.CDPSessionEvent.Disconnected, () => {
-         _classPrivateFieldGet(_world4, this).dispose();
+@@ -20411,7 +20691,21 @@
        });
--      // This might fail if the target is closed before we receive all execution contexts.
+       // This might fail if the target is closed before we receive all execution contexts.
+       networkManager?.addClient(_classPrivateFieldGet(_client17, this)).catch(debugError);
 -      _classPrivateFieldGet(_client17, this).send('Runtime.enable').catch(debugError);
 +      if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE'] !== '0') {
 +        // @ts-ignore
@@ -995,19 +992,18 @@
 +        // @ts-ignore
 +        _classPrivateFieldGet(_world4, this).setContext(new ExecutionContext(client, contextPayload, _classPrivateFieldGet(_world4, this)));
 +      } else {
-+        // This might fail if the target is closed before we receive all execution contexts.
 +        _classPrivateFieldGet(_client17, this).send('Runtime.enable').catch(debugError);
 +      }
      }
      mainRealm() {
        return _classPrivateFieldGet(_world4, this);
-@@ -22189,6 +22483,10 @@
+@@ -22313,6 +22607,10 @@
      async newPage() {
        return await _classPrivateFieldGet(_defaultContext, this).newPage();
      }
 +    // rebrowser-patches: expose browser CDP session
 +    _connection() {
-+      return _classPrivateFieldGet(_connection5, this);
++      return _classPrivateFieldGet(_connection4, this);
 +    }
      async _createPageInContext(contextId) {
        const {
@@ -1021,12 +1017,12 @@
      newPage(): Promise<Page>;
 +    _connection(): Connection;
      _createPageInContext(contextId?: string): Promise<Page>;
-     targets(): CdpTarget[];
-     target(): CdpTarget;
+     installExtension(path: string): Promise<string>;
+     uninstallExtension(id: string): Promise<void>;
 
 --- a/lib/esm/puppeteer/cdp/Browser.js	
 +++ b/lib/esm/puppeteer/cdp/Browser.js	
-@@ -179,6 +179,10 @@
+@@ -172,6 +172,10 @@
      async newPage() {
          return await this.#defaultContext.newPage();
      }
@@ -1101,7 +1097,7 @@
          clientEmitter.on('Runtime.consoleAPICalled', this.#onConsoleAPI.bind(this));
          clientEmitter.on(CDPSessionEvent.Disconnected, () => {
              this[disposeSymbol]();
-@@ -326,7 +333,181 @@
+@@ -325,7 +332,181 @@
      async evaluateHandle(pageFunction, ...args) {
          return await this.#evaluate(false, pageFunction, ...args);
      }
@@ -1286,7 +1282,7 @@
 
 --- a/lib/esm/puppeteer/cdp/FrameManager.js	
 +++ b/lib/esm/puppeteer/cdp/FrameManager.js	
-@@ -147,6 +147,10 @@
+@@ -151,6 +151,10 @@
              this.#onFrameStoppedLoading(event.frameId);
          });
          session.on('Runtime.executionContextCreated', async (event) => {
@@ -1297,7 +1293,7 @@
              await this.#frameTreeHandled?.valueOrThrow();
              this.#onExecutionContextCreated(event.context, session);
          });
-@@ -171,9 +175,16 @@
+@@ -175,9 +179,16 @@
                      this.#frameTreeHandled?.resolve();
                  }),
                  client.send('Page.setLifecycleEventsEnabled', { enabled: true }),
@@ -1317,7 +1313,7 @@
                  ...(frame
                      ? Array.from(this.#scriptsToEvaluateOnNewDocument.values())
                      : []).map(script => {
-@@ -183,6 +194,26 @@
+@@ -187,6 +198,26 @@
                      return frame?.addExposedFunctionBinding(binding);
                  }),
              ]);
@@ -1344,7 +1340,7 @@
          }
          catch (error) {
              this.#frameTreeHandled?.resolve();
-@@ -351,6 +382,23 @@
+@@ -355,6 +386,23 @@
              }
              this._frameTree.addFrame(frame);
          }
@@ -1368,7 +1364,7 @@
          frame = await this._frameTree.waitForFrame(frameId);
          frame._navigated(framePayload);
          this.emit(FrameManagerEvent.FrameNavigated, frame);
-@@ -378,6 +426,24 @@
+@@ -382,6 +430,24 @@
                  worldName: name,
                  grantUniveralAccess: true,
              })
@@ -1474,11 +1470,10 @@
              this.#world.setContext(new ExecutionContext(client, event.context, this.#world));
          });
          this.#world.emitter.on('consoleapicalled', async (event) => {
-@@ -37,8 +41,23 @@
-         this.#client.once(CDPSessionEvent.Disconnected, () => {
-             this.#world.dispose();
+@@ -39,7 +43,22 @@
          });
--        // This might fail if the target is closed before we receive all execution contexts.
+         // This might fail if the target is closed before we receive all execution contexts.
+         networkManager?.addClient(this.#client).catch(debugError);
 -        this.#client.send('Runtime.enable').catch(debugError);
 +        if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE'] !== '0') {
 +            // @ts-ignore
@@ -1494,7 +1489,6 @@
 +            this.#world.setContext(new ExecutionContext(client, contextPayload, this.#world));
 +        }
 +        else {
-+            // This might fail if the target is closed before we receive all execution contexts.
 +            this.#client.send('Runtime.enable').catch(debugError);
 +        }
      }
@@ -1503,7 +1497,7 @@
 
 --- a/lib/esm/puppeteer/common/util.js	
 +++ b/lib/esm/puppeteer/common/util.js	
-@@ -240,7 +240,10 @@
+@@ -231,7 +231,10 @@
  /**
   * @internal
   */
@@ -1515,7 +1509,7 @@
  /**
   * @internal
   */
-@@ -249,6 +252,10 @@
+@@ -240,6 +243,10 @@
   * @internal
   */
  export function getSourceUrlComment(url) {
