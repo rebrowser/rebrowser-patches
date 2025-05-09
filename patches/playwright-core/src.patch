@@ -1,6 +1,7 @@
+
 --- a/src/server/chromium/crConnection.ts	
 +++ b/src/server/chromium/crConnection.ts	
-@@ -197,6 +197,153 @@
+@@ -201,6 +201,153 @@
      }
      this._callbacks.clear();
    }
@@ -157,7 +158,7 @@
 
 --- a/src/server/chromium/crDevTools.ts	
 +++ b/src/server/chromium/crDevTools.ts	
-@@ -66,7 +66,11 @@
+@@ -67,7 +67,11 @@
        }).catch(e => null);
      });
      Promise.all([
@@ -173,7 +174,7 @@
 
 --- a/src/server/chromium/crPage.ts	
 +++ b/src/server/chromium/crPage.ts	
-@@ -534,7 +534,11 @@
+@@ -507,7 +507,11 @@
        }),
        this._client.send('Log.enable', {}),
        lifecycleEventsEnabled = this._client.send('Page.setLifecycleEventsEnabled', { enabled: true }),
@@ -186,7 +187,7 @@
        this._client.send('Runtime.addBinding', { name: PageBinding.kPlaywrightBinding }),
        this._client.send('Page.addScriptToEvaluateOnNewDocument', {
          source: '',
-@@ -743,14 +747,17 @@
+@@ -719,14 +723,17 @@
      }
  
      const url = event.targetInfo.url;
@@ -210,7 +211,7 @@
 
 --- a/src/server/chromium/crServiceWorker.ts	
 +++ b/src/server/chromium/crServiceWorker.ts	
-@@ -44,7 +44,9 @@
+@@ -45,7 +45,9 @@
        this._networkManager.addSession(session, undefined, true /* isMain */).catch(() => {});
      }
  
@@ -224,7 +225,7 @@
 
 --- a/src/server/frames.ts	
 +++ b/src/server/frames.ts	
-@@ -536,6 +536,8 @@
+@@ -540,6 +540,8 @@
        this._startNetworkIdleTimer();
      this._page.mainFrame()._recalculateNetworkIdle(this);
      this._onLifecycleEvent('commit');
@@ -233,7 +234,7 @@
    }
  
    setPendingDocument(documentInfo: DocumentInfo | undefined) {
-@@ -739,12 +741,34 @@
+@@ -743,12 +745,34 @@
      return this._page._delegate.getFrameElement(this);
    }
  
@@ -277,7 +278,7 @@
 
 --- a/src/server/page.ts	
 +++ b/src/server/page.ts	
-@@ -815,12 +815,16 @@
+@@ -823,12 +823,16 @@
    private _executionContextCallback: (value: js.ExecutionContext) => void;
    _existingExecutionContext: js.ExecutionContext | null = null;
    readonly openScope = new LongStandingScope();
@@ -295,7 +296,7 @@
    }
  
    _createExecutionContext(delegate: js.ExecutionContextDelegate) {
-@@ -839,12 +843,23 @@
+@@ -848,12 +852,23 @@
      this.openScope.close(new Error('Worker closed'));
    }
  
@@ -321,7 +322,7 @@
    }
  }
  
-@@ -872,6 +887,10 @@
+@@ -875,6 +890,10 @@
    }
  
    static async dispatch(page: Page, payload: string, context: dom.FrameExecutionContext) {
