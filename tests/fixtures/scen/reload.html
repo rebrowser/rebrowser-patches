@@ -1,0 +1,8 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>reload</title></head>
+<body><h1 id="title">Reload</h1><span id="loads"></span>
+<script>
+var n = (+sessionStorage.getItem('scenLoads') || 0) + 1
+sessionStorage.setItem('scenLoads', String(n))
+document.getElementById('loads').textContent = String(n)
+</script></body></html>

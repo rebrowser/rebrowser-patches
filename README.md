@@ -69,9 +69,9 @@ This triggers `Runtime.executionContextCreated` events, allowing us to catch the
 
 Note: you can change settings for this patch on the fly using an environment variable. This allows you to easily switch between patched and non-patched versions based on your business logic.
 
-- `REBROWSER_PATCHES_RUNTIME_FIX_MODE=addBinding` &mdash; addBinding technique (default)
-- `REBROWSER_PATCHES_RUNTIME_FIX_MODE=alwaysIsolated` &mdash; always run all scripts in isolated context
-- `REBROWSER_PATCHES_RUNTIME_FIX_MODE=enableDisable` &mdash; use Enable/Disable technique
+- `REBROWSER_PATCHES_RUNTIME_FIX_MODE=addBinding` &mdash; addBinding technique (default). Keeps main-world access and works with iframes and web workers.
+- `REBROWSER_PATCHES_RUNTIME_FIX_MODE=alwaysIsolated` &mdash; always run all scripts in an isolated context. Page scripts can't observe your execution, but you lose main-world access and web workers.
+- `REBROWSER_PATCHES_RUNTIME_FIX_MODE=enableDisable` &mdash; use the Enable/Disable technique. **Not recommended:** it still calls `Runtime.enable` for a brief window, so it is not fully leak-free. Only use it if `addBinding` fails on a specific page.
 - `REBROWSER_PATCHES_RUNTIME_FIX_MODE=0` &mdash; completely disable fix for this leak
 - `REBROWSER_PATCHES_DEBUG=1` &mdash; enable some debugging messages
 
@@ -93,6 +93,14 @@ REBROWSER_PATCHES_SOURCE_URL=jquery.min.js
 # use 0 to completely disable this patch
 REBROWSER_PATCHES_SOURCE_URL=0
 ```
+
+### Hide `navigator.webdriver`
+By default Puppeteer and Playwright launch Chrome with `--enable-automation`, which sets `navigator.webdriver = true` &mdash; an obvious automation flag that many anti-bot systems check. This patch adds `--disable-blink-features=AutomationControlled` to the default launch arguments so `navigator.webdriver` stays `false`. Any `--disable-blink-features=...` you pass yourself is merged in, not overwritten.
+```shell
+# use 0 to disable this patch and keep Chrome's default behavior
+REBROWSER_PATCHES_WEBDRIVER_FIX=0
+```
+*Note: this only affects browsers launched by the library. If you connect to an existing browser, pass the switch yourself.*
 
 ### Method to access browser CDP connection
 Sometimes, it could be very useful to access a CDP session at a browser level. For example, when you want to implement some custom CDP command. There is a method `page._client()` that returns CDP session for the current page instance, but there is no such method for browser instance. 
@@ -137,6 +145,8 @@ You can also patch a package by providing the full path to its folder, for examp
 npx rebrowser-patches@latest patch --packagePath /web/app/node_modules/puppeteer-core-custom
 ```
 
+The patcher ships a separate patch set per upstream version (under `patches/<package>/<version>/`). It picks the patch that matches your installed version exactly; if there isn't one, it tries the newest patch for the same major.minor, then the newest overall, and warns that the version wasn't tested. If that closest patch doesn't apply cleanly it stops without touching your files and suggests the matching drop-in package. For the smoothest experience, keep your library on a version this repo lists as tested, or use the drop-in packages below.
+
 You can see all command-line options by running `npx rebrowser-patches@latest --help`, but currently, there's just one patch for one library, so you don't need to configure anything.
 
 ⚠️ Be aware that after running `npm install` or `yarn install` in your project folder, it might override all the changes from the patches. You'll need to run the patcher again to keep the patches in place.
@@ -148,7 +158,7 @@ If you already have your package patched and want to update to the latest versio
 All these versions are just wrappers around Node.js version of Playwright. You need to find `driver` folder inside your Playwright package and run this patch with `--packagePath=$yourDriverFolder/$yourPlatform/package`.
 
 ## Puppeteer support
-✅ Latest fully tested version: 24.8.1 (released 2025-05-06)
+✅ Latest fully tested version: 25.14.0 (released 2026-10-14)
 
 ## Playwright support
 Playwright patches include:
@@ -160,7 +170,7 @@ Important: `page.pause()` method doesn't work with the enabled fix, it needs mor
 
 These patches work only for Chrome for now. If you really want to use it with WebKit or Firefox, please open a new issue.
 
-✅ Latest fully tested version: 1.52.0 (released 2025-04-17)
+✅ Latest fully tested version: 1.64.1 (released 2026-10-14)
 
 ## How to use `rebrowser-puppeteer` with `puppeteer-extra`?
 Use `addExtra` method, here is the example:

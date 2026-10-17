@@ -1,0 +1,72 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Cancel superseded runs on the same ref.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      # runner.temp isn't available in job-level env, so export the work dir here
+      - name: Set work dir
+        run: echo "REBROWSER_WORK_DIR=$RUNNER_TEMP/rbp-work" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # Trusted publishing needs npm >= 11.5.1; keep CI on the same npm the release uses.
+      - name: Upgrade npm
+        run: npm install -g npm@^11
+
+      - name: Preflight
+        run: node release/doctor.mjs
+
+      - name: Build drop-in packages
+        run: node release/build-packages.mjs
+
+      - name: Read release targets
+        run: node release/ci-env.mjs >> "$GITHUB_ENV"
+
+      - name: Build Python wheels
+        run: node release/build-python.mjs "$PY_VERSION" --driver-tgz "$REBROWSER_WORK_DIR/dist/rebrowser-playwright-core-$PY_DRIVER.tgz" --out "$REBROWSER_WORK_DIR/dist-py"
+
+      - name: Install browser dependencies for tests
+        run: npx --yes @puppeteer/browsers install chrome@stable --path "$REBROWSER_WORK_DIR/browsers" >/dev/null || true
+
+      - name: Run test suite
+        run: |
+          set -e
+          dist="$REBROWSER_WORK_DIR/dist"
+          wheel=$(ls "$REBROWSER_WORK_DIR"/dist-py/*manylinux*x86_64*.whl 2>/dev/null | head -1)
+          [ -n "$wheel" ] || { echo "::error::no linux x86_64 wheel in $REBROWSER_WORK_DIR/dist-py"; exit 1; }
+          # all five suites are listed explicitly, so a missing input fails the run instead of skipping a suite
+          xvfb-run -a node tests/run.mjs \
+            --suites detection,scenarios,webdriver,smoke,python \
+            --pptr-core "$dist/rebrowser-puppeteer-core-$PPTR_VERSION.tgz" \
+            --pptr "$dist/rebrowser-puppeteer-$PPTR_VERSION.tgz" \
+            --pw-core "$dist/rebrowser-playwright-core-$PW_VERSION.tgz" \
+            --pw "$dist/rebrowser-playwright-$PW_VERSION.tgz" \
+            --py-wheel "$wheel" \
+            --out "$REBROWSER_WORK_DIR/test-out"
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: ${{ env.REBROWSER_WORK_DIR }}/test-out
+          if-no-files-found: ignore

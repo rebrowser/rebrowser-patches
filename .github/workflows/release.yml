@@ -1,0 +1,156 @@
+name: release
+
+# Publishes to npm + PyPI via trusted publishing (OIDC). Configured on npm (all 5 packages) and PyPI
+# (rebrowser-playwright) for THIS repo, workflow file `release.yml`, environment `release`.
+#
+# Normal release: push a tag `v<cliVersion>` (e.g. v1.1.0). The job builds, tests, then publishes only
+# the versions in release/versions.json that aren't already on the registry (idempotent, so a re-run
+# after a partial failure resumes). Mirroring the drop-in repos is done separately from the container
+# (release/mirror.mjs) and is intentionally not in this workflow.
+#
+# Rollback: run the workflow manually (workflow_dispatch) with action=rollback, a package and a target
+# version; it moves that package's npm `latest` dist-tag back via OIDC. It never unpublishes.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'release or rollback'
+        type: choice
+        options: [release, rollback]
+        default: release
+      package:
+        description: 'rollback: package name'
+        type: string
+        default: ''
+      to_version:
+        description: 'rollback: version to point latest at'
+        type: string
+        default: ''
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    if: github.event_name == 'push' || inputs.action == 'release'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      # runner.temp isn't available in job-level env, so export the work dir here
+      - run: echo "REBROWSER_WORK_DIR=$RUNNER_TEMP/rbp-work" >> "$GITHUB_ENV"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install -g npm@^11
+      - name: Build drop-in packages
+        run: node release/build-packages.mjs
+      - name: Read release targets
+        run: node release/ci-env.mjs >> "$GITHUB_ENV"
+      - name: Build Python wheels
+        run: node release/build-python.mjs "$PY_VERSION" --driver-tgz "$REBROWSER_WORK_DIR/dist/rebrowser-playwright-core-$PY_DRIVER.tgz" --out "$REBROWSER_WORK_DIR/dist-py"
+      - run: npx --yes @puppeteer/browsers install chrome@stable --path "$REBROWSER_WORK_DIR/browsers" >/dev/null || true
+      - name: Test
+        run: |
+          set -e
+          dist="$REBROWSER_WORK_DIR/dist"
+          wheel=$(ls "$REBROWSER_WORK_DIR"/dist-py/*manylinux*x86_64*.whl 2>/dev/null | head -1)
+          [ -n "$wheel" ] || { echo "::error::no linux x86_64 wheel in $REBROWSER_WORK_DIR/dist-py"; exit 1; }
+          xvfb-run -a node tests/run.mjs --suites detection,scenarios,webdriver,smoke,python \
+            --pptr-core "$dist/rebrowser-puppeteer-core-$PPTR_VERSION.tgz" --pptr "$dist/rebrowser-puppeteer-$PPTR_VERSION.tgz" \
+            --pw-core "$dist/rebrowser-playwright-core-$PW_VERSION.tgz" --pw "$dist/rebrowser-playwright-$PW_VERSION.tgz" \
+            --py-wheel "$wheel" --out "$REBROWSER_WORK_DIR/test-out"
+      - name: Stage artifacts
+        run: |
+          set -e
+          mkdir -p staged/npm staged/pypi
+          cp "$REBROWSER_WORK_DIR"/dist/manifest.json staged/npm/
+          # only tarballs the manifest marks publishable (the Python-only driver core stays out)
+          node -e "const m=require(process.argv[1]);for(const a of m.artifacts)if(a.publish!==false)console.log(a.file)" "$REBROWSER_WORK_DIR/dist/manifest.json" \
+            | while read -r f; do cp "$REBROWSER_WORK_DIR/dist/$f" staged/npm/; done
+          cp "$REBROWSER_WORK_DIR"/dist-py/*.whl staged/pypi/
+          ls staged/npm staged/pypi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-artifacts
+          path: staged
+
+  publish-npm:
+    needs: build-test
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      id-token: write   # OIDC for npm trusted publishing
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: 'https://registry.npmjs.org'
+      - run: npm install -g npm@^11
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-artifacts
+          path: staged
+      - name: Publish to npm (OIDC, idempotent)
+        run: node release/publish.mjs --manifest staged/npm --yes
+
+  publish-pypi:
+    needs: build-test
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      id-token: write   # OIDC for PyPI trusted publishing
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-artifacts
+          path: staged
+      - name: Publish wheels to PyPI (OIDC)
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: staged/pypi
+
+  github-release:
+    needs: [publish-npm, publish-pypi]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # create the GitHub Release on this repo
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-artifacts
+          path: staged
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if [ "${{ github.event_name }}" != "push" ]; then echo "manual run; skipping release creation"; exit 0; fi
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --title "$TAG" --generate-notes staged/npm/*.tgz || \
+          gh release upload "$TAG" staged/npm/*.tgz --repo "$GITHUB_REPOSITORY" --clobber
+
+  rollback:
+    if: github.event_name == 'workflow_dispatch' && inputs.action == 'rollback'
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: 'https://registry.npmjs.org'
+      - run: npm install -g npm@^11
+      - name: Move npm latest back (OIDC)
+        run: node release/publish.mjs rollback --package "${{ inputs.package }}" --to "${{ inputs.to_version }}" --yes

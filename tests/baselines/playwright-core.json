@@ -1,0 +1,54 @@
+{
+  "package": "playwright-core",
+  "about": "Expected results of tests/workers/scenarios.mjs for the PATCHED rebrowser-playwright-core. Unpatched upstream must pass every scenario (else the run is reported as broken). A scenario listed in allowFail may fail; any other failure is a new regression and fails the run. Add an entry only with a reason and an issue link; never to hide a regression.",
+  "evidence": "Measured on Chrome 155: the rebrowser-playwright-core 1.64.0 port (2026-10-08) and the 1.64.1 build (2026-10-16) both gave default 21/22 and alwaysIsolated 20/22; unpatched playwright-core 1.64.x and 1.52.0 passed 22/22. (The shipped 1.52.0 build failed setContent and concurrent-evaluates in default mode and 14 scenarios in alwaysIsolated mode; the port fixed both.)",
+  "scenarios": [
+    "evaluate-basic",
+    "evaluate-main-world-global",
+    "dom-read",
+    "setContent",
+    "click",
+    "type-fill",
+    "waitForSelector-delayed",
+    "waitForFunction-across-navigation",
+    "evaluate-after-navigation",
+    "long-evaluate-5s",
+    "concurrent-evaluates",
+    "iframe-same-origin",
+    "iframe-cross-site-oopif",
+    "worker-evaluate",
+    "exposeFunction-called-by-page",
+    "init-script",
+    "request-events",
+    "request-interception",
+    "popup-window-open",
+    "reload-then-evaluate",
+    "elementHandle-evaluate",
+    "storageState"
+  ],
+  "modes": {
+    "default": {
+      "allowFail": [
+        {
+          "scenario": "exposeFunction-called-by-page",
+          "issue": "rebrowser/rebrowser-patches#69",
+          "reason": "page.exposeFunction() bindings are not callable from the page without Runtime.enable; passes with the patch off (mode 0)"
+        }
+      ]
+    },
+    "alwaysIsolated": {
+      "allowFail": [
+        {
+          "scenario": "exposeFunction-called-by-page",
+          "issue": "rebrowser/rebrowser-patches#69",
+          "reason": "same as default mode"
+        },
+        {
+          "scenario": "evaluate-main-world-global",
+          "issue": "by design",
+          "reason": "alwaysIsolated runs every evaluate() in an isolated world, so page JS globals (window.pageVar) are invisible; documented mode semantics"
+        }
+      ]
+    }
+  }
+}
