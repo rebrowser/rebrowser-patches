@@ -19,10 +19,10 @@ index 222fb07..33323dc 100644
      return chromeArguments;
    }
 diff --git a/src/server/chromium/crConnection.ts b/src/server/chromium/crConnection.ts
-index bdf9ab8..21c7edd 100644
+index bdf9ab8..d684744 100644
 --- a/src/server/chromium/crConnection.ts
 +++ b/src/server/chromium/crConnection.ts
-@@ -209,6 +209,114 @@ export class CRSession extends SdkObject<Protocol.EventMap & ConnectionEventMap>
+@@ -209,6 +209,115 @@ export class CRSession extends SdkObject<Protocol.EventMap & ConnectionEventMap>
      }
      this._callbacks.clear();
    }
@@ -103,7 +103,8 @@ index bdf9ab8..21c7edd 100644
 +    } else {
 +      // we could call the binding right from `addScriptToEvaluateOnNewDocument`, but this way it will be called in all existing frames and it's hard to distinguish children from the parent
 +      await client.send('Page.addScriptToEvaluateOnNewDocument', {
-+        source: `document.addEventListener('${randomName}', (e) => self['${randomName}'](e.detail.frameId))`,
++        // use `window`, not `self`: pages can reassign `self` (or make it throw, e.g. LavaMoat scuttling), `window` is unforgeable
++        source: `document.addEventListener('${randomName}', (e) => window['${randomName}'](e.detail.frameId))`,
 +        runImmediately: true,
 +      });
 +
@@ -155,7 +156,7 @@ index 74aa11c..747805e 100644
        session.send('Page.enable'),
        session.send('Page.addScriptToEvaluateOnNewDocument', { source: `
 diff --git a/src/server/chromium/crPage.ts b/src/server/chromium/crPage.ts
-index 1510bd0..dcc8b22 100644
+index 1510bd0..e5845b7 100644
 --- a/src/server/chromium/crPage.ts
 +++ b/src/server/chromium/crPage.ts
 @@ -105,7 +105,8 @@ export class CRPage implements PageDelegate {
@@ -201,6 +202,28 @@ index 1510bd0..dcc8b22 100644
      this._crPage._networkManager.addSession(session, this._page.frameManager.frame(event.targetInfo.parentFrameId ?? this._targetId) ?? undefined).catch(() => {});
      session._sendMayFail('Runtime.runIfWaitingForDebugger');
      session._sendMayFail('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: true, flatten: true });
+@@ -891,7 +898,20 @@ class FrameSession {
+   async _onBindingCalled(event: Protocol.Runtime.bindingCalledPayload) {
+     const pageOrError = await this._crPage._page.waitForInitializedOrError();
+     if (!(pageOrError instanceof Error)) {
+-      const context = this._contextIdToContext.get(event.executionContextId);
++      let context = this._contextIdToContext.get(event.executionContextId);
++      // rebrowser-patches: without Runtime events a main world gets a context only when it is first used, so a
++      // binding call (JSON payload) may come from one we don't know yet. Create this session's main contexts on
++      // demand and look again.
++      if (!context && process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE'] !== '0' && event.payload.startsWith('{')) {
++        for (const frame of this._page.frameManager.frames()) {
++          if (frame._rebrowserSession() !== this._client)
++            continue;
++          await frame.context('main').catch(() => {});
++          context = this._contextIdToContext.get(event.executionContextId);
++          if (context)
++            break;
++        }
++      }
+       if (context)
+         await this._page.onBindingCalled(event.payload, context);
+     }
 diff --git a/src/server/chromium/crServiceWorker.ts b/src/server/chromium/crServiceWorker.ts
 index abd6f58..75f4902 100644
 --- a/src/server/chromium/crServiceWorker.ts
@@ -226,20 +249,33 @@ index abd6f58..75f4902 100644
      session.on('Inspector.targetReloadedAfterCrash', () => {
        // Resume service worker after restart.
 diff --git a/src/server/frames.ts b/src/server/frames.ts
-index d9080e4..50d9915 100644
+index d9080e4..66b8905 100644
 --- a/src/server/frames.ts
 +++ b/src/server/frames.ts
-@@ -264,6 +264,9 @@ export class FrameManager {
+@@ -35,7 +35,7 @@ import { helper } from './helper';
+ import { SdkObject } from './instrumentation';
+ import * as js from './javascript';
+ import * as network from './network';
+-import { Page, ariaSnapshotJSONForFrame } from './page';
++import { Page, PageBinding, ariaSnapshotJSONForFrame } from './page';
+ import { isAbortError, nullProgress, ProgressController, raceUncancellableOperationWithCleanup } from './progress';
+ import * as types from './types';
+ import { isSessionClosedError } from './protocolError';
+@@ -264,6 +264,13 @@ export class FrameManager {
        frame._currentDocument = { documentId, request: undefined };
      }
  
 +    // rebrowser-patches: there are no Runtime events, so drop this frame's old contexts when a new document commits
-+    if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE'] !== '0' && frame._rebrowserSession())
++    if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE'] !== '0' && frame._rebrowserSession()) {
 +      frame._rebrowserDropContexts();
++      // and add the page binding again: Chrome drops it on navigation without Runtime.enable (crbug.com/382473087)
++      if (this._page.browserContext.needsPlaywrightBinding())
++        frame._rebrowserSession().send('Runtime.addBinding', { name: PageBinding.kBindingName }).catch(() => {});
++    }
      frame._onClearLifecycle();
      const navigationEvent: NavigationEvent = { url, name, newDocument: frame._currentDocument, isPublic: true };
      this._fireInternalFrameNavigation(frame, navigationEvent);
-@@ -525,6 +528,8 @@ export class Frame extends SdkObject<FrameEventMap> {
+@@ -525,6 +532,8 @@ export class Frame extends SdkObject<FrameEventMap> {
    private _parentFrame: Frame | null;
    _url = '';
    private _contextData = new Map<types.World, ContextData>();
@@ -248,7 +284,7 @@ index d9080e4..50d9915 100644
    private _childFrames = new Set<Frame>();
    _name = '';
    _inflightRequests = new Set<network.Request>();
-@@ -787,14 +792,51 @@ export class Frame extends SdkObject<FrameEventMap> {
+@@ -787,14 +796,51 @@ export class Frame extends SdkObject<FrameEventMap> {
      return await progress.race(this._page.delegate.getFrameElement(this));
    }
  
@@ -306,7 +342,7 @@ index d9080e4..50d9915 100644
    }
  
    mainContext(): Promise<dom.FrameExecutionContext> {
-@@ -965,6 +1007,34 @@ export class Frame extends SdkObject<FrameEventMap> {
+@@ -965,6 +1011,34 @@ export class Frame extends SdkObject<FrameEventMap> {
        const waitUntil = options.waitUntil === undefined ? 'load' : options.waitUntil;
        progress.log(`setting frame content, waiting until "${waitUntil}"`);
        const context = await progress.race(this.utilityContext());
@@ -341,8 +377,42 @@ index d9080e4..50d9915 100644
        const tagPromise = new ManualPromise<void>();
        this._page.frameManager._consoleMessageTags.set(tag, () => {
          // Clear lifecycle right after document.open() - see 'tag' below.
+diff --git a/src/server/javascript.ts b/src/server/javascript.ts
+index adaae31..dae6f7b 100644
+--- a/src/server/javascript.ts
++++ b/src/server/javascript.ts
+@@ -55,6 +55,20 @@ export interface ExecutionContextDelegate {
+   shouldPrependErrorPrefix(): boolean;
+ }
+ 
++// rebrowser-patches: V8 names stack frames after the class binding, so a page calling `new Error().stack` from
++// inside an evaluate() sees "UtilityScript.evaluate". Rename the binding to a neutral name.
++// REBROWSER_PATCHES_SOURCE_URL=0 keeps the original source.
++function utilityScriptSource(): string {
++  const source = rawUtilityScriptSource.source;
++  if (process.env['REBROWSER_PATCHES_SOURCE_URL'] === '0')
++    return source;
++  const renamed = source
++      .replace('var UtilityScript = class {', 'var t = class {')
++      .replace('UtilityScript: () => UtilityScript', 'UtilityScript: () => t');
++  // if upstream changes the generated shape, keep it working rather than half-renamed
++  return renamed.includes('var t = class {') && renamed.includes('UtilityScript: () => t') ? renamed : source;
++}
++
+ export class ExecutionContext extends SdkObject {
+   readonly delegate: ExecutionContextDelegate;
+   private _utilityScriptPromise: Promise<JSHandle> | undefined;
+@@ -109,7 +123,7 @@ export class ExecutionContext extends SdkObject {
+       (() => {
+         ${globalsSnapshot}
+         const module = {};
+-        ${rawUtilityScriptSource.source}
++        ${utilityScriptSource()}
+         return new (module.exports.UtilityScript())(globalThis, ${isUnderTest()});
+       })();`;
+       this._utilityScriptPromise = this.raceAgainstContextDestroyed(this.delegate.rawEvaluateHandle(this, source))
 diff --git a/src/server/page.ts b/src/server/page.ts
-index 314d13e..3056ed2 100644
+index 314d13e..ef7b2c9 100644
 --- a/src/server/page.ts
 +++ b/src/server/page.ts
 @@ -996,6 +996,9 @@ export class Worker extends SdkObject<WorkerEventMap> {
@@ -381,7 +451,50 @@ index 314d13e..3056ed2 100644
    }
  
    async disconnect(progress: Progress, options: { reason?: string } = {}) {
-@@ -1078,6 +1092,10 @@ export class PageBinding extends DisposableObject {
+@@ -1048,6 +1062,33 @@ export class Worker extends SdkObject<WorkerEventMap> {
+   }
+ }
+ 
++// rebrowser-patches: without Runtime.enable, Chrome drops CDP bindings when the page navigates (crbug.com/382473087).
++// They are added again when the navigation commits, so a call made before that waits for the binding instead of
++// throwing. The page never sees anything but the native binding. REBROWSER_PATCHES_RUNTIME_FIX_MODE=0 keeps the
++// original source.
++function bindingsControllerSource(): string {
++  const source = rawBindingsControllerSource.source;
++  if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE'] === '0')
++    return source;
++  const call = '    this._global[this._globalBindingName](JSON.stringify(payload));\n';
++  const retry = [
++    '    const json = JSON.stringify(payload);',
++    '    const send = (tries) => {',
++    '      const binding = this._global[this._globalBindingName];',
++    '      if (typeof binding === "function")',
++    '        binding(json);',
++    '      else if (tries < 500)',
++    '        setTimeout(() => send(tries + 1), 10);',
++    '      else',
++    '        data.callbacks.get(seq)?.reject(new Error(`binding "${bindingName}" is not available`));',
++    '    };',
++    '    send(0);',
++    '',
++  ].join('\n');
++  // if upstream changes the generated shape, keep the original rather than half-patched code
++  return source.split(call).length === 2 ? source.replace(call, () => retry) : source;
++}
++
+ export class PageBinding extends DisposableObject {
+   static kBindingName = '__playwright__binding__';
+ 
+@@ -1055,7 +1096,7 @@ export class PageBinding extends DisposableObject {
+     return new InitScript(browserContext, `
+       (() => {
+         const module = {};
+-        ${rawBindingsControllerSource.source}
++        ${bindingsControllerSource()}
+         const property = '${kBindingsControllerProperty}';
+         if (!globalThis[property])
+           globalThis[property] = new (module.exports.BindingsController())(globalThis, '${PageBinding.kBindingName}');
+@@ -1078,6 +1119,10 @@ export class PageBinding extends DisposableObject {
    }
  
    static async dispatch(page: Page, payload: string, context: dom.FrameExecutionContext) {

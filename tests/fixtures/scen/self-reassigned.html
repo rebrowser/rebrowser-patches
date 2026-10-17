@@ -1,0 +1,7 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>self-reassigned</title>
+<script>
+// some sites reassign the global `self` (issues #100, #116: gbl.com, yara.com)
+self = { notTheWindow: true }
+</script></head>
+<body><h1 id="title">Self Reassigned</h1></body></html>

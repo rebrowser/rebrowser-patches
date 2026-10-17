@@ -22,7 +22,52 @@
      return `//# sourceURL=${url}`;
    }
    /**
-@@ -16465,26 +16471,6 @@
+@@ -16027,6 +16033,9 @@
+   /**
+    * @internal
+    */
++  // rebrowser-patches: without Runtime.enable, Chrome drops CDP bindings when the page navigates
++  // (crbug.com/382473087). The binding is added again when the navigation commits, so a call made before that
++  // waits for it instead of throwing. This function is serialized into the page: keep comments out of its body.
+   function addPageBinding(type, name, prefix) {
+     // Depending on the frame loading state either Runtime.evaluate or
+     // Page.addScriptToEvaluateOnNewDocument might succeed. Let's check that we
+@@ -16046,9 +16055,7 @@
+         const seq = (callPuppeteer.lastSeq ?? 0) + 1;
+         callPuppeteer.lastSeq = seq;
+         callPuppeteer.args.set(seq, args);
+-        // @ts-expect-error: In a different context.
+-        // Needs to be the same as CDP_BINDING_PREFIX.
+-        globalThis[prefix + name](JSON.stringify({
++        const payload = JSON.stringify({
+           type,
+           name,
+           seq,
+@@ -16056,7 +16063,22 @@
+           isTrivial: !args.some(value => {
+             return value instanceof Node;
+           })
+-        }));
++        });
++        const send = tries => {
++          // @ts-expect-error: In a different context.
++          // Needs to be the same as CDP_BINDING_PREFIX.
++          const cdpBinding = globalThis[prefix + name];
++          if (typeof cdpBinding === 'function') {
++            cdpBinding(payload);
++          } else if (tries < 500) {
++            setTimeout(() => {
++              return send(tries + 1);
++            }, 10);
++          } else {
++            callPuppeteer.callbacks.get(seq)?.reject(new Error(`binding ${name} is not available`));
++          }
++        };
++        send(0);
+         return new Promise((resolve, reject) => {
+           callPuppeteer.callbacks.set(seq, {
+             resolve(value) {
+@@ -16465,26 +16487,6 @@
  
    /**
     * @license
@@ -49,7 +94,7 @@
     * Copyright 2017 Google Inc.
     * SPDX-License-Identifier: Apache-2.0
     */
-@@ -16589,6 +16575,7 @@
+@@ -16589,6 +16591,7 @@
        _classPrivateFieldInitSpec(this, _client6, void 0);
        _classPrivateFieldInitSpec(this, _world3, void 0);
        _classPrivateFieldInitSpec(this, _id4, void 0);
@@ -57,7 +102,7 @@
        _classPrivateFieldInitSpec(this, _name4, void 0);
        _classPrivateFieldInitSpec(this, _disposables, new DisposableStack());
        _classPrivateFieldInitSpec(this, _logger13, void 0);
-@@ -16606,16 +16593,22 @@
+@@ -16606,16 +16609,22 @@
        if (contextPayload.name) {
          _classPrivateFieldSet(_name4, this, contextPayload.name);
        }
@@ -87,7 +132,7 @@
        clientEmitter.on('Runtime.consoleAPICalled', _assertClassBrand(_ExecutionContext_brand, this, _onConsoleAPI).bind(this));
        clientEmitter.on(exports.CDPSessionEvent.Disconnected, () => {
          this[disposeSymbol]();
-@@ -16740,6 +16733,181 @@
+@@ -16740,6 +16749,182 @@
      async evaluateHandle(pageFunction, ...args) {
        return await _assertClassBrand(_ExecutionContext_brand, this, _evaluate).call(this, false, pageFunction, ...args);
      }
@@ -146,8 +191,9 @@
 +        });
 +      } else {
 +        // we could call the binding right from `addScriptToEvaluateOnNewDocument`, but this way it will be called in all existing frames and it's hard to distinguish children from the parent
++        // use `window`, not `self`: pages can reassign `self` (or make it throw, e.g. LavaMoat scuttling), `window` is unforgeable
 +        await client.send('Page.addScriptToEvaluateOnNewDocument', {
-+          source: `document.addEventListener('${randomName}', (e) => self['${randomName}'](e.detail.frameId))`,
++          source: `document.addEventListener('${randomName}', (e) => window['${randomName}'](e.detail.frameId))`,
 +          runImmediately: true
 +        });
 +        // create new isolated world for this frame
@@ -238,13 +284,13 @@
 +            return;
 +          }
 +          if (_classPrivateFieldGet(_id4, this) === -1) {
-+            // main world
-+            if (context.auxData && context.auxData['isDefault']) {
++            // main world of this frame
++            if (context.auxData && context.auxData['isDefault'] && context.auxData['frameId'] === this._frameId) {
 +              contextId = context.id;
 +            }
 +          } else if (_classPrivateFieldGet(_id4, this) === -2) {
-+            // utility world
-+            if (_classPrivateFieldGet(_name4, this) === context.name) {
++            // utility world of this frame
++            if (_classPrivateFieldGet(_name4, this) === context.name && context.auxData?.['frameId'] === this._frameId) {
 +              contextId = context.id;
 +            }
 +          } else if (_classPrivateFieldGet(_id4, this) === -3) {
@@ -269,7 +315,28 @@
      [disposeSymbol]() {
        _classPrivateFieldGet(_disposables, this).dispose();
        this.emit('disposed', undefined);
-@@ -16840,6 +17008,12 @@
+@@ -16792,7 +16977,19 @@
+   }
+   async function _onBindingCalled(event) {
+     if (event.executionContextId !== _classPrivateFieldGet(_id4, this)) {
+-      return;
++      // rebrowser-patches: without Runtime events a main world learns its id only when it is first used, so a
++      // Puppeteer binding call (JSON payload) may come from it before that. Acquire the id and check again.
++      if (_classPrivateFieldGet(_id4, this) !== -1 || process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE'] === '0' || !event.payload.startsWith('{')) {
++        return;
++      }
++      try {
++        await this.acquireContextId();
++      } catch {
++        return;
++      }
++      if (event.executionContextId !== _classPrivateFieldGet(_id4, this)) {
++        return;
++      }
+     }
+     let payload;
+     try {
+@@ -16840,6 +17037,12 @@
      }
    }
    async function _evaluate(returnByValue, pageFunction, ...args) {
@@ -282,7 +349,7 @@
      const sourceUrlComment = getSourceUrlComment(getSourcePuppeteerURLIfAvailable(pageFunction)?.toString() ?? PuppeteerURL.INTERNAL_URL);
      if (isString(pageFunction)) {
        const contextId = _classPrivateFieldGet(_id4, this);
-@@ -16987,6 +17161,26 @@
+@@ -16987,6 +17190,26 @@
    };
  
    /**
@@ -309,7 +376,7 @@
     * @internal
     */
    var _world4 = /*#__PURE__*/new WeakMap();
-@@ -17016,6 +17210,10 @@
+@@ -17016,6 +17239,10 @@
        _classPrivateFieldSet(_world4, this, new IsolatedWorld(this, new TimeoutSettings(), MAIN_WORLD, logger));
        _classPrivateFieldSet(_emitter2, this, new EventEmitter(undefined, logger));
        _classPrivateFieldGet(_client7, this).once('Runtime.executionContextCreated', async event => {
@@ -320,7 +387,7 @@
          _classPrivateFieldGet(_world4, this).setContext(new ExecutionContext(client, event.context, _classPrivateFieldGet(_world4, this), logger));
        });
        _classPrivateFieldGet(_client7, this).once('Inspector.workerScriptLoaded', () => {
-@@ -17058,9 +17256,23 @@
+@@ -17058,9 +17285,23 @@
        networkManager?.addClient(_classPrivateFieldGet(_client7, this)).catch(err => {
          return _classPrivateFieldGet(_logger14, this)?.call(this, DEBUG_PREFIXES.error)?.(err);
        });
@@ -347,7 +414,7 @@
      }
      mainRealm() {
        return _classPrivateFieldGet(_world4, this);
-@@ -17108,6 +17320,7 @@
+@@ -17108,6 +17349,7 @@
      }
    }
  
@@ -355,7 +422,7 @@
    /**
     * @license
     * Copyright 2019 Google Inc.
-@@ -17191,6 +17404,8 @@
+@@ -17191,6 +17433,8 @@
        if (!context) {
          context = await _assertClassBrand(_IsolatedWorld_brand, this, _waitForExecutionContext).call(this);
        }
@@ -364,12 +431,14 @@
        const {
          object
        } = await this.client.send('DOM.resolveNode', {
-@@ -17293,6 +17508,21 @@
+@@ -17293,6 +17537,23 @@
     * Waits for the next context to be set on the isolated world.
     */
    async function _waitForExecutionContext() {
 +    const fixMode = process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE'] || 'addBinding';
-+    if (fixMode === 'addBinding') {
++    // rebrowser-patches: there are no Runtime events in any patched mode, so create the context lazily
++    // (alwaysIsolated/enableDisable used to wait here forever for frames attached after the session started)
++    if (fixMode !== '0') {
 +      const isMainWorld = _classPrivateFieldGet(_frameOrWorker, this).worlds[MAIN_WORLD] === this;
 +      process.env['REBROWSER_PATCHES_DEBUG'] && console.log(`[rebrowser-patches][waitForExecutionContext] frameId = ${_classPrivateFieldGet(_frameOrWorker, this)._id}, isMainWorld = ${isMainWorld}`);
 +      const contextPayload = {
@@ -386,7 +455,7 @@
      const error = new Error('Execution context was destroyed');
      const result = await firstValueFrom(fromEmitterEvent(_classPrivateFieldGet(_emitter3, this), 'context').pipe(raceWith(fromEmitterEvent(_classPrivateFieldGet(_emitter3, this), 'disposed').pipe(map(() => {
        // The message has to match the CDP message expected by the WaitTask class.
-@@ -19621,6 +19851,10 @@
+@@ -19621,6 +19882,10 @@
          _assertClassBrand(_FrameManager_brand, this, _onFrameStoppedLoading).call(this, event.frameId);
        });
        session.on('Runtime.executionContextCreated', async event => {
@@ -397,7 +466,7 @@
          await _classPrivateFieldGet(_frameTreeHandled, this)?.valueOrThrow();
          _assertClassBrand(_FrameManager_brand, this, _onExecutionContextCreated).call(this, event.context, session);
        });
-@@ -19647,13 +19881,39 @@
+@@ -19647,13 +19912,39 @@
            _classPrivateFieldGet(_frameTreeHandled, this)?.resolve();
          }), client.send('Page.setLifecycleEventsEnabled', {
            enabled: true
@@ -440,7 +509,7 @@
        } catch (error) {
          _classPrivateFieldGet(_frameTreeHandled, this)?.resolve();
          // The target might have been closed before the initialization finished.
-@@ -19891,6 +20151,23 @@
+@@ -19891,6 +20182,37 @@
        }
        this._frameTree.addFrame(frame);
      }
@@ -458,13 +527,27 @@
 +          }
 +          // @ts-ignore
 +          frame.worlds[worldSymbol].context?.clear(worldSymbol === MAIN_WORLD ? -1 : -2);
++          // rebrowser-patches: re-run pending waitForFunction/waitForSelector in the new document
++          // @ts-ignore
++          void frame.worlds[worldSymbol].taskManager.rerunAll();
 +        }
++      }
++    }
++    // rebrowser-patches: without Runtime.enable, Chrome drops CDP bindings on navigation (crbug.com/382473087),
++    // so add the exposed functions' bindings again for the new document
++    if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE'] !== '0' && frame) {
++      for (const binding of _classPrivateFieldGet(_bindings2, this)) {
++        frame.client.send('Runtime.addBinding', {
++          name: CDP_BINDING_PREFIX + binding.name
++        }).catch(error => {
++          _classPrivateFieldGet(_logger19, this)?.call(this, DEBUG_PREFIXES.error)?.(error);
++        });
 +      }
 +    }
      frame = await this._frameTree.waitForFrame(frameId);
      frame._navigated(framePayload);
      this.emit(exports.FrameManagerEvent.FrameNavigated, frame);
-@@ -19914,6 +20191,23 @@
+@@ -19914,6 +20236,23 @@
          frameId: frame._id,
          worldName: name,
          grantUniveralAccess: true
@@ -550,7 +633,31 @@
          clientEmitter.on('Runtime.consoleAPICalled', this.#onConsoleAPI.bind(this));
          clientEmitter.on(CDPSessionEvent.Disconnected, () => {
              this[disposeSymbol]();
-@@ -339,7 +346,181 @@
+@@ -171,7 +178,22 @@
+     }
+     async #onBindingCalled(event) {
+         if (event.executionContextId !== this.#id) {
+-            return;
++            // rebrowser-patches: without Runtime events a main world learns its id only when it is first used, so a
++            // Puppeteer binding call (JSON payload) may come from it before that. Acquire the id and check again.
++            if (this.#id !== -1 ||
++                process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE'] === '0' ||
++                !event.payload.startsWith('{')) {
++                return;
++            }
++            try {
++                await this.acquireContextId();
++            }
++            catch {
++                return;
++            }
++            if (event.executionContextId !== this.#id) {
++                return;
++            }
+         }
+         let payload;
+         try {
+@@ -339,7 +361,182 @@
      async evaluateHandle(pageFunction, ...args) {
          return await this.#evaluate(false, pageFunction, ...args);
      }
@@ -602,8 +709,9 @@
 +        }
 +        else {
 +            // we could call the binding right from `addScriptToEvaluateOnNewDocument`, but this way it will be called in all existing frames and it's hard to distinguish children from the parent
++            // use `window`, not `self`: pages can reassign `self` (or make it throw, e.g. LavaMoat scuttling), `window` is unforgeable
 +            await client.send('Page.addScriptToEvaluateOnNewDocument', {
-+                source: `document.addEventListener('${randomName}', (e) => self['${randomName}'](e.detail.frameId))`,
++                source: `document.addEventListener('${randomName}', (e) => window['${randomName}'](e.detail.frameId))`,
 +                runImmediately: true,
 +            });
 +            // create new isolated world for this frame
@@ -692,14 +800,14 @@
 +                    return;
 +                }
 +                if (this.#id === -1) {
-+                    // main world
-+                    if (context.auxData && context.auxData['isDefault']) {
++                    // main world of this frame
++                    if (context.auxData && context.auxData['isDefault'] && context.auxData['frameId'] === this._frameId) {
 +                        contextId = context.id;
 +                    }
 +                }
 +                else if (this.#id === -2) {
-+                    // utility world
-+                    if (this.#name === context.name) {
++                    // utility world of this frame
++                    if (this.#name === context.name && context.auxData?.['frameId'] === this._frameId) {
 +                        contextId = context.id;
 +                    }
 +                }
@@ -734,7 +842,15 @@
          if (isString(pageFunction)) {
 --- a/lib/puppeteer/cdp/FrameManager.js
 +++ b/lib/puppeteer/cdp/FrameManager.js
-@@ -230,6 +230,10 @@
+@@ -75,6 +75,7 @@
+ import { IsolatedWorld } from './IsolatedWorld.js';
+ import { MAIN_WORLD, PUPPETEER_WORLD } from './IsolatedWorlds.js';
+ import { NetworkManager } from './NetworkManager.js';
++import { CDP_BINDING_PREFIX } from './utils.js';
+ const CHROME_EXTENSION_PREFIX = 'chrome-extension://';
+ /**
+  * A frame manager manages the frames for a given {@link Page | page}.
+@@ -230,6 +231,10 @@
              this.#onFrameStoppedLoading(event.frameId);
          });
          session.on('Runtime.executionContextCreated', async (event) => {
@@ -745,7 +861,7 @@
              await this.#frameTreeHandled?.valueOrThrow();
              this.#onExecutionContextCreated(event.context, session);
          });
-@@ -257,9 +261,16 @@
+@@ -257,9 +262,16 @@
                      this.#frameTreeHandled?.resolve();
                  }),
                  client.send('Page.setLifecycleEventsEnabled', { enabled: true }),
@@ -765,7 +881,7 @@
                  ...(frame
                      ? Array.from(this.#scriptsToEvaluateOnNewDocument.values())
                      : []).map(script => {
-@@ -270,6 +281,26 @@
+@@ -270,6 +282,26 @@
                  }),
                  this.#page.browser().isIssuesEnabled() && client.send('Audits.enable'),
              ]);
@@ -792,7 +908,7 @@
          }
          catch (error) {
              this.#frameTreeHandled?.resolve();
-@@ -457,6 +488,23 @@
+@@ -457,6 +489,37 @@
              }
              this._frameTree.addFrame(frame);
          }
@@ -810,13 +926,27 @@
 +                    }
 +                    // @ts-ignore
 +                    frame.worlds[worldSymbol].context?.clear(worldSymbol === MAIN_WORLD ? -1 : -2);
++                    // rebrowser-patches: re-run pending waitForFunction/waitForSelector in the new document
++                    // @ts-ignore
++                    void frame.worlds[worldSymbol].taskManager.rerunAll();
 +                }
++            }
++        }
++        // rebrowser-patches: without Runtime.enable, Chrome drops CDP bindings on navigation (crbug.com/382473087),
++        // so add the exposed functions' bindings again for the new document
++        if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE'] !== '0' && frame) {
++            for (const binding of this.#bindings) {
++                frame.client
++                    .send('Runtime.addBinding', { name: CDP_BINDING_PREFIX + binding.name })
++                    .catch(error => {
++                    this.#logger?.(DEBUG_PREFIXES.error)?.(error);
++                });
 +            }
 +        }
          frame = await this._frameTree.waitForFrame(frameId);
          frame._navigated(framePayload);
          this.emit(FrameManagerEvent.FrameNavigated, frame);
-@@ -484,6 +532,24 @@
+@@ -484,6 +547,24 @@
                  worldName: name,
                  grantUniveralAccess: true,
              })
@@ -877,12 +1007,14 @@
  import { CdpJSHandle } from './JSHandle.js';
  import { CdpWebWorker } from './WebWorker.js';
  /**
-@@ -74,6 +76,21 @@
+@@ -74,6 +76,23 @@
       * Waits for the next context to be set on the isolated world.
       */
      async #waitForExecutionContext() {
 +        const fixMode = process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE'] || 'addBinding';
-+        if (fixMode === 'addBinding') {
++        // rebrowser-patches: there are no Runtime events in any patched mode, so create the context lazily
++        // (alwaysIsolated/enableDisable used to wait here forever for frames attached after the session started)
++        if (fixMode !== '0') {
 +            const isMainWorld = this.#frameOrWorker.worlds[MAIN_WORLD] === this;
 +            process.env['REBROWSER_PATCHES_DEBUG'] && console.log(`[rebrowser-patches][waitForExecutionContext] frameId = ${this.#frameOrWorker._id}, isMainWorld = ${isMainWorld}`);
 +            const contextPayload = {
@@ -899,7 +1031,7 @@
          const error = new Error('Execution context was destroyed');
          const result = await firstValueFrom(fromEmitterEvent(this.#emitter, 'context').pipe(raceWith(fromEmitterEvent(this.#emitter, 'disposed').pipe(map(() => {
              // The message has to match the CDP message expected by the WaitTask class.
-@@ -111,6 +128,8 @@
+@@ -111,6 +130,8 @@
          if (!context) {
              context = await this.#waitForExecutionContext();
          }
@@ -949,6 +1081,57 @@
      }
      mainRealm() {
          return this.#world;
+--- a/lib/puppeteer/cdp/utils.js
++++ b/lib/puppeteer/cdp/utils.js
+@@ -181,6 +181,9 @@
+ /**
+  * @internal
+  */
++// rebrowser-patches: without Runtime.enable, Chrome drops CDP bindings when the page navigates
++// (crbug.com/382473087). The binding is added again when the navigation commits, so a call made before that
++// waits for it instead of throwing. This function is serialized into the page: keep comments out of its body.
+ export function addPageBinding(type, name, prefix) {
+     // Depending on the frame loading state either Runtime.evaluate or
+     // Page.addScriptToEvaluateOnNewDocument might succeed. Let's check that we
+@@ -200,9 +203,7 @@
+             const seq = (callPuppeteer.lastSeq ?? 0) + 1;
+             callPuppeteer.lastSeq = seq;
+             callPuppeteer.args.set(seq, args);
+-            // @ts-expect-error: In a different context.
+-            // Needs to be the same as CDP_BINDING_PREFIX.
+-            globalThis[prefix + name](JSON.stringify({
++            const payload = JSON.stringify({
+                 type,
+                 name,
+                 seq,
+@@ -210,7 +211,26 @@
+                 isTrivial: !args.some(value => {
+                     return value instanceof Node;
+                 }),
+-            }));
++            });
++            const send = (tries) => {
++                // @ts-expect-error: In a different context.
++                // Needs to be the same as CDP_BINDING_PREFIX.
++                const cdpBinding = globalThis[prefix + name];
++                if (typeof cdpBinding === 'function') {
++                    cdpBinding(payload);
++                }
++                else if (tries < 500) {
++                    setTimeout(() => {
++                        return send(tries + 1);
++                    }, 10);
++                }
++                else {
++                    callPuppeteer.callbacks
++                        .get(seq)
++                        ?.reject(new Error(`binding ${name} is not available`));
++                }
++            };
++            send(0);
+             return new Promise((resolve, reject) => {
+                 callPuppeteer.callbacks.set(seq, {
+                     resolve(value) {
 --- a/lib/puppeteer/common/util.js
 +++ b/lib/puppeteer/common/util.js
 @@ -224,7 +224,10 @@
@@ -976,12 +1159,13 @@
  /**
 --- a/lib/puppeteer/node/ChromeLauncher.js
 +++ b/lib/puppeteer/node/ChromeLauncher.js
-@@ -117,6 +117,18 @@
+@@ -117,6 +117,19 @@
          if (options.args && userDisabledFeatures.length > 0) {
              removeMatchingFlags(options.args, '--disable-features');
          }
 +        // rebrowser-patches: hide navigator.webdriver with --disable-blink-features=AutomationControlled,
-+        // merged with the user's own --disable-blink-features. REBROWSER_PATCHES_WEBDRIVER_FIX=0 turns it off.
++        // merged with the user's own --disable-blink-features, and drop --enable-automation (below).
++        // REBROWSER_PATCHES_WEBDRIVER_FIX=0 turns both off.
 +        const webdriverFix = process.env['REBROWSER_PATCHES_WEBDRIVER_FIX'] !== '0';
 +        const userDisabledBlinkFeatures = getFeatures('--disable-blink-features', options.args);
 +        if (webdriverFix && options.args && userDisabledBlinkFeatures.length > 0) {
@@ -995,7 +1179,17 @@
          const turnOnExperimentalFeaturesForTesting = process.env['PUPPETEER_TEST_EXPERIMENTAL_CHROME_FEATURES'] === 'true';
          const userEnabledFeatures = getFeatures('--enable-features', options.args);
          if (options.args && userEnabledFeatures.length > 0) {
-@@ -185,6 +197,9 @@
+@@ -175,7 +188,8 @@
+             '--disable-renderer-backgrounding',
+             '--disable-search-engine-choice-screen',
+             '--disable-sync',
+-            '--enable-automation',
++            // rebrowser-patches: --enable-automation shows the "controlled by automated test software" bar
++            webdriverFix ? '' : '--enable-automation',
+             '--export-tagged-pdf',
+             '--force-color-profile=srgb',
+             '--generate-pdf-document-outline',
+@@ -185,6 +199,9 @@
              '--use-mock-keychain',
              `--disable-features=${disabledFeatures.join(',')}`,
              `--enable-features=${enabledFeatures.join(',')}`,

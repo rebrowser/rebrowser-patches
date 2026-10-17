@@ -37,9 +37,10 @@ node release/build-python.mjs <pyVersion> --driver-tgz <work>/dist/rebrowser-pla
 node tests/run.mjs --pptr-core <tgz> --pptr <tgz> --pw-core <tgz> --pw <tgz> --py-wheel <whl> --out <work>/test-out
 ```
 `tests/run.mjs` must exit 0. It fails if a positive control (unpatched upstream, or patch mode `0`) is
-not detected, if a negative control is, if the unpatched scenarios aren't 22/22, or if a patched build
-regresses beyond `tests/baselines/`. Known-inherent failures (#129 waitForFunction, #69 exposeFunction,
-and isolated-mode limits) live in the baselines.
+not detected, if a negative control is, if unpatched upstream fails any scenario, or if a patched build
+regresses beyond `tests/baselines/`. Known, issue-linked failures (today only `alwaysIsolated` mode limits)
+live in the baselines. The `nonchromium` suite (Playwright on Firefox + WebKit) is opt-in locally; CI installs
+those browsers and runs it.
 
 ## 4. Second-model review, then the PR
 Have a second model review the `src.patch` delta against the previous release (this is the code ~600k

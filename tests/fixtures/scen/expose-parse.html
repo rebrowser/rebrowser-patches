@@ -1,0 +1,8 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>expose-parse</title>
+<script>
+// what a page sees of the CDP binding while it is still parsing (Puppeteer: puppeteer_<name>, Playwright: __playwright__binding__)
+var b = window.__playwright__binding__ || window.puppeteer_nodeAdd
+window.__parse = { type: typeof b, native: typeof b === 'function' && /\[native code\]/.test(Function.prototype.toString.call(b)) }
+</script></head>
+<body><h1 id="title">Expose Parse</h1></body></html>

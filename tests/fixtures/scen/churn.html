@@ -1,0 +1,18 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>churn</title></head>
+<body><h1 id="title">Churn</h1>
+<script>
+// keeps attaching and removing child frames (same-site, cross-site, about:blank, srcdoc) for ~7 s (issues #97, #115)
+let n = 0
+const kinds = [() => '/frame.html', () => 'http://localhost:{{PORT_B}}/frame.html', () => 'about:blank', null]
+const t = setInterval(() => {
+  const f = document.createElement('iframe')
+  const k = kinds[n % kinds.length]
+  if (k) f.src = k(); else f.srcdoc = '<p>srcdoc</p>'
+  document.body.appendChild(f)
+  n++
+  const all = document.querySelectorAll('iframe')
+  if (all.length > 6) all[0].remove()
+  if (n > 50) clearInterval(t)
+}, 150)
+</script></body></html>
