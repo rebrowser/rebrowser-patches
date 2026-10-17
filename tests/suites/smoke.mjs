@@ -2,13 +2,16 @@
 //   for every core tarball:   installs, version matches, CJS require(), ESM import(), `tsc --noEmit` against a tiny .ts
 //   for every wrapper tarball (rebrowser-puppeteer / rebrowser-playwright), in its own project with the LOCAL core
 //   tarball injected (the wrapper pins a core version that is not on npm yet):
-//       exact pin of the core (npm:rebrowser-...@<core version>, no range), resolves to the local patched core,
-//       CJS / ESM / types, launches a browser and evaluates; rebrowser-puppeteer: its postinstall browser download
-//       works (skipped with a note when the network is unreachable)
+//       depends on rebrowser-...-core at exactly the core version (no range) and not on puppeteer-core /
+//       playwright-core, resolves to the local patched core, CJS / ESM / types, launches a browser and evaluates;
+//       rebrowser-puppeteer: its postinstall browser download works (skipped with a note when the network is unreachable)
+//   alias-collision (#74), per wrapper, in another project: the upstream puppeteer / playwright of the same version is
+//       installed next to the wrapper (from npm, no browser download) and the wrapper must still get the PATCHED core
+//       (skipped with a note when the network is unreachable)
 import fs from 'node:fs'
 import path from 'node:path'
 import { newSuite } from '../lib/report.mjs'
-import { run as runCmd, tail } from '../lib/util.mjs'
+import { lastJsonLine, run as runCmd, tail } from '../lib/util.mjs'
 import { npmInstall, stageWorkers, upstreamName } from '../lib/project.mjs'
 
 const NETWORK_ERROR = /ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ECONNRESET|ETIMEDOUT|ENETUNREACH|EHOSTUNREACH|getaddrinfo|fetch failed|socket hang up|network/i
@@ -66,12 +69,14 @@ async function checkPackage(ctx, s, { dir, name, family, version, tsc }) {
 
 async function wrapperSmoke(ctx, s, fam) {
   const w = fam.wrapper
-  const coreName = upstreamName(fam.patched.name) // 'puppeteer-core' / 'playwright-core': the name the wrapper depends on
+  const coreName = fam.patched.name // 'rebrowser-puppeteer-core' / 'rebrowser-playwright-core': the name the wrapper depends on
+  const upstreamCore = upstreamName(coreName) // 'puppeteer-core' / 'playwright-core': must NOT be a dependency (#74)
   const gate = (id, ok, detail) => s.gate(`${w.name}/${id}`, ok, detail)
 
   const pin = w.dependencies[coreName]
-  const want = `npm:${fam.patched.name}@${fam.patched.version}`
-  gate('pins-core-exactly', pin === want, `dependencies.${coreName} = ${pin}, expected ${want}`)
+  const stray = w.dependencies[upstreamCore]
+  gate('pins-core-exactly', pin === fam.patched.version && stray === undefined,
+    `dependencies.${coreName} = ${pin}, expected ${fam.patched.version}; dependencies.${upstreamCore} = ${stray}, expected none`)
 
   const dir = path.join(ctx.runDir, `wrapper-${fam.key}`)
   fs.mkdirSync(dir, { recursive: true })
@@ -122,6 +127,43 @@ async function wrapperSmoke(ctx, s, fam) {
   gate('launch-and-evaluate', l.code === 0, l.code === 0 ? 'launched a browser and evaluated 1 + 1' : tail(l.stderr || l.stdout, 400))
 }
 
+/**
+ * #74: next to the upstream package of the same version, the wrapper must still resolve the patched core. A wrapper that
+ * depends on "puppeteer-core": "npm:rebrowser-puppeteer-core@V" gets the real puppeteer-core instead: npm dedupes the
+ * alias against upstream puppeteer's own puppeteer-core@V. Own throwaway project, the LOCAL core tarball injected.
+ */
+export async function aliasCollision(ctx, s, fam) {
+  const w = fam.wrapper
+  const coreName = fam.patched.name
+  const upstreamWrapper = upstreamName(w.name) // 'puppeteer' / 'playwright', same version as the wrapper
+  const id = `${w.name}/alias-collision`
+  const dir = path.join(ctx.runDir, `alias-collision-${fam.key}`)
+  fs.mkdirSync(dir, { recursive: true })
+  fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({
+    name: `alias-collision-${fam.key}`,
+    private: true,
+    type: 'module',
+    dependencies: { [upstreamWrapper]: w.version, [w.name]: `file:${w.file}` },
+    overrides: { [coreName]: `file:${fam.patched.file}` },
+  }, null, 2))
+  // --ignore-scripts (npmInstall's default) plus the skip variables: no browser download for either package
+  const r = await npmInstall(dir, { env: { PUPPETEER_SKIP_DOWNLOAD: '1', PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1' } })
+  if (r.code !== 0) {
+    const out = r.stderr + r.stdout
+    if (NETWORK_ERROR.test(out) && !/E404|ETARGET/.test(out)) {
+      s.note(`${w.name}: alias-collision check SKIPPED (npm registry unreachable): ${tail(out, 300).replace(/\s+/g, ' ')}`)
+    } else {
+      s.gate(id, false, `npm install of ${upstreamWrapper}@${w.version} + ${w.name} failed: ${tail(out, 500)}`)
+    }
+    return
+  }
+  stageWorkers(dir)
+  const c = await runCmd('node', [path.join(dir, 'workers', 'alias-collision.mjs'), w.name, coreName, fam.patched.version, upstreamWrapper, w.version], { cwd: dir, tmp: ctx.tmp, timeoutMs: 120000 })
+  const found = c.code === 0 ? lastJsonLine(c.stdout) : null
+  s.gate(id, c.code === 0 && found?.ok === true,
+    c.code === 0 ? `${found?.core} loaded from ${found?.coreDir} (patched code in ${found?.patchedFile}) next to ${found?.upstream}` : tail(c.stderr || c.stdout, 500))
+}
+
 export async function run(ctx) {
   const s = newSuite('smoke')
   for (const fam of [ctx.project.pptr, ctx.project.pw]) {
@@ -131,6 +173,7 @@ export async function run(ctx) {
     if (fam.wrapper) {
       ctx.log(`[smoke] ${fam.wrapper.name}`)
       await wrapperSmoke(ctx, s, fam)
+      await aliasCollision(ctx, s, fam)
     }
   }
   for (const g of s.gates) s.line(`${g.ok ? 'PASS' : 'FAIL'}  ${g.id}${g.detail ? '  -- ' + g.detail.split('\n')[0].slice(0, 140) : ''}`)

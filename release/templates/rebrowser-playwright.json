@@ -32,7 +32,10 @@
       "url": "https://github.com/rebrowser/rebrowser-patches/issues"
     }
   },
-  "dependencies": {
-    "playwright-core": "npm:rebrowser-playwright-core@{version}"
+  "replaceDependencies": {
+    "playwright-core": {
+      "name": "rebrowser-playwright-core",
+      "version": "{version}"
+    }
   }
 }

@@ -31,8 +31,11 @@
       "url": "https://github.com/rebrowser/rebrowser-patches/issues"
     }
   },
-  "dependencies": {
-    "puppeteer-core": "npm:rebrowser-puppeteer-core@{version}"
+  "replaceDependencies": {
+    "puppeteer-core": {
+      "name": "rebrowser-puppeteer-core",
+      "version": "{version}"
+    }
   },
   "rewrites": [
     {
