@@ -1,0 +1,44 @@
+{
+  "from": "puppeteer",
+  "kind": "wrapper",
+  "core": "puppeteer-core",
+  "set": {
+    "name": "rebrowser-puppeteer",
+    "description": "A drop-in replacement for puppeteer patched with rebrowser-patches. It allows to pass modern automation detection tests."
+  },
+  "afterDescription": {
+    "keywords": [
+      "rebrowser",
+      "rebrowser-patches",
+      "bot",
+      "bot-detection",
+      "captcha",
+      "scraping",
+      "web-scraping",
+      "puppeteer",
+      "chrome",
+      "headless",
+      "automation"
+    ],
+    "contributors": [
+      "Nick Webson <nwebson@rebrowser.net>"
+    ],
+    "repository": {
+      "type": "git",
+      "url": "git+https://github.com/rebrowser/rebrowser-puppeteer"
+    },
+    "bugs": {
+      "url": "https://github.com/rebrowser/rebrowser-patches/issues"
+    }
+  },
+  "dependencies": {
+    "puppeteer-core": "npm:rebrowser-puppeteer-core@{version}"
+  },
+  "rewrites": [
+    {
+      "file": "install.mjs",
+      "from": "puppeteer/internal/node/install.js",
+      "to": "rebrowser-puppeteer/internal/node/install.js"
+    }
+  ]
+}

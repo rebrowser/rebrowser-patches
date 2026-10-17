@@ -1,0 +1,38 @@
+{
+  "from": "playwright",
+  "kind": "wrapper",
+  "core": "playwright-core",
+  "set": {
+    "name": "rebrowser-playwright",
+    "description": "A drop-in replacement for playwright patched with rebrowser-patches. It allows to pass modern automation detection tests."
+  },
+  "afterDescription": {
+    "keywords": [
+      "rebrowser",
+      "rebrowser-patches",
+      "automation",
+      "bot",
+      "bot-detection",
+      "captcha",
+      "scraping",
+      "web-scraping",
+      "playwright",
+      "chrome",
+      "headless",
+      "automation"
+    ],
+    "contributors": [
+      "Nick Webson <nwebson@rebrowser.net>"
+    ],
+    "repository": {
+      "type": "git",
+      "url": "git+https://github.com/rebrowser/rebrowser-playwright"
+    },
+    "bugs": {
+      "url": "https://github.com/rebrowser/rebrowser-patches/issues"
+    }
+  },
+  "dependencies": {
+    "playwright-core": "npm:rebrowser-playwright-core@{version}"
+  }
+}

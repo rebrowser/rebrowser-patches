@@ -1,0 +1,34 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Runtime.enable detection PoC v2 (continuous)</title></head>
+<body><pre id="out"></pre>
+<script>
+// Runs every check every 50 ms for 8 s after load, so it overlaps whatever the automation library does
+// (evaluates, utility-world queries, bindings). Each check restores global state before the next one runs.
+const hits = { classicStackGetter: 0, prepareStackTrace: 0, errorNameGetterCalls: 0, rounds: 0 }
+function classicStackGetter() {
+  const e = new Error()
+  Object.defineProperty(e, 'stack', { configurable: false, enumerable: false, get() { hits.classicStackGetter++; return '' } })
+  console.debug(e)
+}
+function prepareStackTrace() {
+  const orig = Error.prepareStackTrace
+  let fired = 0
+  Error.prepareStackTrace = (err, frames) => { fired++; return orig ? orig(err, frames) : String(err) }
+  try { console.debug(new Error('probe')) } finally { Error.prepareStackTrace = orig }
+  hits.prepareStackTrace += fired
+}
+function errorNameGetter() {
+  class ProbeError extends Error { get name() { hits.errorNameGetterCalls++; return 'ProbeError' } }
+  console.debug(new ProbeError('probe'))
+}
+const started = performance.now()
+function round() {
+  hits.rounds++
+  classicStackGetter(); prepareStackTrace(); errorNameGetter()
+  if (performance.now() - started < 8000) return setTimeout(round, 50)
+  const result = { ...hits, namePerRound: +(hits.errorNameGetterCalls / hits.rounds).toFixed(3), ua: navigator.userAgent, webdriver: navigator.webdriver, tag: new URLSearchParams(location.search).get('tag') }
+  document.getElementById('out').textContent = JSON.stringify(result, null, 2)
+  fetch('/report', { method: 'POST', body: JSON.stringify(result) })
+}
+round()
+</script></body></html>

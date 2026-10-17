@@ -1,0 +1,74 @@
+{
+  "package": "puppeteer-core",
+  "about": "Expected results of tests/workers/scenarios.mjs for the PATCHED rebrowser-puppeteer-core. Unpatched upstream must pass every scenario (else the run is reported as broken). A scenario listed in allowFail may fail; any other failure is a new regression and fails the run. Add an entry only with a reason and an issue link; never to hide a regression.",
+  "evidence": "Measured 2026-10-08 on Chrome 155: rebrowser-puppeteer-core 24.8.1 and the 25.13.0 port gave identical results (default 20/22, alwaysIsolated 17/22); re-confirmed on the 25.14.0 build on Chrome 155.0.8059.39 (default 20/22, alwaysIsolated 17/22). Unpatched puppeteer-core passed 22/22, and so did the patch with REBROWSER_PATCHES_RUNTIME_FIX_MODE=0.",
+  "scenarios": [
+    "evaluate-basic",
+    "evaluate-main-world-global",
+    "dom-read",
+    "setContent",
+    "click",
+    "type-fill",
+    "waitForSelector-delayed",
+    "waitForFunction-across-navigation",
+    "evaluate-after-navigation",
+    "long-evaluate-5s",
+    "concurrent-evaluates",
+    "iframe-same-origin",
+    "iframe-cross-site-oopif",
+    "worker-evaluate",
+    "exposeFunction-called-by-page",
+    "init-script",
+    "request-events",
+    "request-interception",
+    "popup-window-open",
+    "reload-then-evaluate",
+    "elementHandle-evaluate",
+    "isolatedRealm-evaluate"
+  ],
+  "modes": {
+    "default": {
+      "allowFail": [
+        {
+          "scenario": "waitForFunction-across-navigation",
+          "issue": "rebrowser/rebrowser-patches#129",
+          "reason": "page.waitForFunction() started before a navigation never resolves after it; inherent to the addBinding approach, also present in 24.8.1, passes with the patch off (mode 0)"
+        },
+        {
+          "scenario": "exposeFunction-called-by-page",
+          "issue": "rebrowser/rebrowser-patches#69",
+          "reason": "page.exposeFunction() bindings are not callable from the page without Runtime.enable; also present in 24.8.1, passes with the patch off (mode 0)"
+        }
+      ]
+    },
+    "alwaysIsolated": {
+      "allowFail": [
+        {
+          "scenario": "waitForFunction-across-navigation",
+          "issue": "rebrowser/rebrowser-patches#129",
+          "reason": "same as default mode"
+        },
+        {
+          "scenario": "exposeFunction-called-by-page",
+          "issue": "rebrowser/rebrowser-patches#69",
+          "reason": "same as default mode"
+        },
+        {
+          "scenario": "iframe-same-origin",
+          "issue": "unfiled",
+          "reason": "alwaysIsolated: reading a same-origin child frame times out (waitForSelector/contentFrame/evaluate never settles); the cross-site OOPIF case works. Present in the 24.8.1 release and in the 25.13.0 and 25.14.0 ports (same TIMEOUT), so inherent to the current alwaysIsolated implementation, not a port regression"
+        },
+        {
+          "scenario": "evaluate-main-world-global",
+          "issue": "by design",
+          "reason": "alwaysIsolated runs every evaluate() in an isolated world, so page JS globals (window.pageVar) are invisible; documented mode semantics"
+        },
+        {
+          "scenario": "worker-evaluate",
+          "issue": "by design",
+          "reason": "alwaysIsolated rejects web workers: '[rebrowser-patches] web workers are not supported in alwaysIsolated mode'"
+        }
+      ]
+    }
+  }
+}

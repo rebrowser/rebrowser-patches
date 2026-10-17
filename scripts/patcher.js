@@ -10,8 +10,8 @@ import {
   exec,
   fatalError,
   getPatchBaseCmd,
-  getPatcherPackagePath,
   log,
+  resolvePatchVersion,
   validPackagesNames,
 } from './utils/index.js';
 
@@ -85,7 +85,18 @@ import {
   }
   log(`Found package "${packageJson.name}", version ${packageJson.version}`)
 
-  const patchFilePath = resolve(getPatcherPackagePath(), `./patches/${packageName}/${codeTarget}.patch`)
+  // Patches are stored per upstream version under patches/<package>/<version>/<codeTarget>.patch.
+  // Pick the exact version, else the newest patch for the same major.minor, else the newest overall.
+  const resolved = resolvePatchVersion(packageName, packageJson.version, codeTarget)
+  if (!resolved) {
+    fatalError(`No ${codeTarget}.patch found for ${packageName}. This rebrowser-patches version may not support it.`)
+  }
+  const patchFilePath = resolved.path
+  log(`Using patch version ${resolved.version} (${codeTarget})`)
+  if (!resolved.exact) {
+    log(`⚠️  No patch tested on ${packageName}@${packageJson.version}; trying the closest one (${resolved.version}).`)
+    log('⚠️  If this fails or misbehaves, use the matching drop-in package (e.g. rebrowser-' + packageName + ') instead.')
+  }
 
   // check patch status
   let patchStatus
@@ -97,7 +108,12 @@ import {
   } catch (e) {
     if (e.stdout.includes('No file to patch')) {
       fatalError('Internal error, patch command cannot find file to patch')
-    } else if (e.stdout.includes('Ignoring previously applied (or reversed) patch')) {
+    } else if (
+      // GNU patch wording varies by version: "Ignoring previously applied (or reversed) patch"
+      // vs "Reversed (or previously applied) patch detected!  Skipping patch." — match the common part.
+      e.stdout.includes('previously applied') ||
+      e.stdout.includes('Reversed (or previously applied)')
+    ) {
       patchStatus = 'patched'
     } else if (e.stderr.includes('is not recognized')) {
       let message = 'patch command not found!'
@@ -105,6 +121,13 @@ import {
         message += '\nCheck README for how to install patch.exe on Windows.'
       }
       fatalError(message)
+    } else if (!resolved.exact) {
+      // A non-exact patch that doesn't apply cleanly: don't risk a half-patched install.
+      fatalError(
+        `The closest patch (${resolved.version}) does not apply to ${packageName}@${packageJson.version}.\n` +
+        `Use the matching drop-in package instead: rebrowser-${packageName}@${packageJson.version} ` +
+        `(see https://github.com/rebrowser/rebrowser-patches#readme), or install a ${packageName} version that has a patch.`
+      )
     } else {
       log('[debug] patch error:', e)
       throw e

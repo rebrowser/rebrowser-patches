@@ -1,0 +1,173 @@
+diff --git a/README.md b/README.md
+index b8af3c5..a112fcc 100644
+--- a/README.md
++++ b/README.md
+@@ -1,3 +1,14 @@
++# rebrowser-playwright
++> ⚠️ This is the original [`playwright-python`](https://github.com/microsoft/playwright-python) patched with [`rebrowser-patches`](https://github.com/rebrowser/rebrowser-patches).
++>
++> 🕵️ The ultimate goal is to pass all automation detection tests presented in [`rebrowser-bot-detector`](https://github.com/rebrowser/rebrowser-bot-detector).
++>
++> 🪄 It's designed to be a drop-in replacement for the original `playwright` without changing your codebase. Each major and minor version of this repo matches the original repo, patch version could differ due to changes related to the patch itself.
++>
++> ☝️ Make sure to read: [Patches for Puppeteer and Playwright](https://rebrowser.net/docs/patches-for-puppeteer-and-playwright)
++>
++> 🐛 Please report any issues in the [`rebrowser-patches`](https://github.com/rebrowser/rebrowser-patches/issues) repo.
++
+ # 🎭 [Playwright](https://playwright.dev) for Python [![PyPI](https://badge.fury.io/py/playwright.svg)](https://pypi.python.org/pypi/playwright/) [![Join Discord](https://img.shields.io/badge/join-discord-infomational)](https://aka.ms/playwright/discord)
+ 
+ Playwright is a Python library to automate [Chromium](https://www.chromium.org/Home), [Firefox](https://www.mozilla.org/en-US/firefox/new/) and [WebKit](https://webkit.org/) browsers with a single API. Playwright delivers automation that is **ever-green**, **capable**, **reliable** and **fast**. [See how Playwright is better](https://playwright.dev/python).
+diff --git a/pyproject.toml b/pyproject.toml
+index 0e5e5db..d4749e2 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -1,16 +1,16 @@
+ [build-system]
+-requires = ["setuptools==82.0.1", "setuptools-scm==10.3.4", "wheel==0.48.0", "auditwheel==6.7.0"]
++requires = ["setuptools==82.0.1", "wheel==0.48.0", "auditwheel==6.7.0"]
+ build-backend = "setuptools.build_meta"
+ 
+ [project]
+-name = "playwright"
++name = "rebrowser_playwright"
++version = "1.64.0"
+ description = "A high-level API to automate web browsers"
+ authors = [
+     {name = "Microsoft Corporation"}
+ ]
+ readme = "README.md"
+ license = "Apache-2.0"
+-dynamic = ["version"]
+ requires-python = ">=3.10"
+ # Please when changing dependencies run the following commands to update requirements.txt:
+ # - pip install uv==0.5.4
+@@ -33,27 +33,28 @@ classifiers = [
+ ]
+ 
+ [project.urls]
+-homepage = "https://github.com/Microsoft/playwright-python"
+-"Release notes" = "https://github.com/microsoft/playwright-python/releases"
++homepage = "https://github.com/rebrowser/rebrowser-playwright-python"
++"Release notes" = "https://github.com/rebrowser/rebrowser-playwright-python/releases"
+ 
+ [project.scripts]
+-playwright = "playwright.__main__:main"
++rebrowser_playwright = "rebrowser_playwright.__main__:main"
+ 
+ [project.entry-points.pyinstaller40]
+-hook-dirs = "playwright._impl.__pyinstaller:get_hook_dirs"
++hook-dirs = "rebrowser_playwright._impl.__pyinstaller:get_hook_dirs"
+ 
+ [tool.setuptools]
+ packages = [
+-    "playwright",
+-    "playwright.async_api",
+-    "playwright.sync_api",
+-    "playwright._impl",
+-    "playwright._impl.__pyinstaller",
++    "rebrowser_playwright",
++    "rebrowser_playwright.async_api",
++    "rebrowser_playwright.sync_api",
++    "rebrowser_playwright._impl",
++    "rebrowser_playwright._impl.__pyinstaller",
+ ]
+ include-package-data = true
+ 
+-[tool.setuptools_scm]
+-version_file = "playwright/_repo_version.py"
++# setuptools_scm used to pick up py.typed from git; list it explicitly now
++[tool.setuptools.package-data]
++rebrowser_playwright = ["py.typed"]
+ 
+ [tool.pytest.ini_options]
+ addopts = "-Wall -rsx -vv -s"
+diff --git a/scripts/build_driver.py b/scripts/build_driver.py
+index 0583bca..250ab08 100755
+--- a/scripts/build_driver.py
++++ b/scripts/build_driver.py
+@@ -134,23 +134,30 @@ def _extract_zip_file(archive: zipfile.ZipFile, name: str, destination: Path) ->
+ 
+ def fetch_playwright_core(version: str, work_dir: Path) -> Path:
+     """Download playwright-core@<version> and extract its package/ tree once."""
+-    npm = "npm.cmd" if sys.platform == "win32" else "npm"
+-    spec = f"playwright-core@{version}"
+-    # npm is run from the repository root so that a root-level .npmrc (registry
+-    # and credentials) is honoured. `npm pack` writes <name>-<version>.tgz.
+-    print(f"Downloading {spec} with npm pack", flush=True)
+-    try:
+-        subprocess.check_call(
+-            [npm, "pack", spec, "--pack-destination", str(work_dir)],
+-            cwd=REPO_ROOT,
+-        )
+-    except FileNotFoundError:
+-        raise SystemExit(
+-            "npm was not found on PATH; Node.js/npm are required to assemble the driver."
+-        )
+-    except subprocess.CalledProcessError as error:
+-        raise SystemExit(f"npm pack {spec} failed with exit code {error.returncode}")
+     tgz = work_dir / f"playwright-core-{version}.tgz"
++    # rebrowser-patches: REBROWSER_DRIVER_TGZ points at the locally built, patched
++    # rebrowser-playwright-core tarball, which is used instead of npm's playwright-core.
++    local_tgz = os.environ.get("REBROWSER_DRIVER_TGZ")
++    if local_tgz:
++        print(f"Using local driver tarball {local_tgz}", flush=True)
++        shutil.copyfile(local_tgz, tgz)  # copied: the extraction below unlinks it
++    else:
++        npm = "npm.cmd" if sys.platform == "win32" else "npm"
++        spec = f"playwright-core@{version}"
++        # npm is run from the repository root so that a root-level .npmrc (registry
++        # and credentials) is honoured. `npm pack` writes <name>-<version>.tgz.
++        print(f"Downloading {spec} with npm pack", flush=True)
++        try:
++            subprocess.check_call(
++                [npm, "pack", spec, "--pack-destination", str(work_dir)],
++                cwd=REPO_ROOT,
++            )
++        except FileNotFoundError:
++            raise SystemExit(
++                "npm was not found on PATH; Node.js/npm are required to assemble the driver."
++            )
++        except subprocess.CalledProcessError as error:
++            raise SystemExit(f"npm pack {spec} failed with exit code {error.returncode}")
+     if not tgz.is_file():
+         raise SystemExit(f"npm pack did not produce {tgz}")
+     with tarfile.open(tgz, "r:gz") as tar:
+diff --git a/setup.py b/setup.py
+index 2ceb4d1..f084f41 100644
+--- a/setup.py
++++ b/setup.py
+@@ -123,7 +123,7 @@ class PlaywrightBDistWheelCommand(BDistWheelCommand):
+     def run(self) -> None:
+         super().run()
+         os.makedirs("driver", exist_ok=True)
+-        os.makedirs("playwright/driver", exist_ok=True)
++        os.makedirs("rebrowser_playwright/driver", exist_ok=True)
+         self._download_and_extract_local_driver()
+ 
+         wheel = None
+@@ -173,9 +173,9 @@ class PlaywrightBDistWheelCommand(BDistWheelCommand):
+                 for file in files:
+                     from_path = os.path.join(dir_path, file)
+                     to_path = os.path.relpath(from_path, driver_root)
+-                    zip.write(from_path, f"playwright/driver/{to_path}")
++                    zip.write(from_path, f"rebrowser_playwright/driver/{to_path}")
+             zip.writestr(
+-                "playwright/driver/README.md",
++                "rebrowser_playwright/driver/README.md",
+                 f"{wheel_bundle['wheel']} driver package",
+             )
+         os.remove(base_wheel_location)
+@@ -206,10 +206,10 @@ class PlaywrightBDistWheelCommand(BDistWheelCommand):
+         zip_name = zip_names_for_current_system.pop()
+         ensure_driver_bundle(zip_name)
+         zip_file = f"driver/playwright-{driver_version}-{zip_name}.zip"
+-        if os.path.exists("playwright/driver"):
+-            shutil.rmtree("playwright/driver")
++        if os.path.exists("rebrowser_playwright/driver"):
++            shutil.rmtree("rebrowser_playwright/driver")
+         with zipfile.ZipFile(zip_file, "r") as zip:
+-            extractall(zip, "playwright/driver")
++            extractall(zip, "rebrowser_playwright/driver")
+ 
+ 
+ setup(

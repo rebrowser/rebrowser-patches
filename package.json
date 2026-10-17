@@ -1,6 +1,6 @@
 {
   "name": "rebrowser-patches",
-  "version": "1.0.19",
+  "version": "1.1.0",
   "description": "Collection of patches for puppeteer and playwright to avoid automation detection and leaks. Helps to avoid Cloudflare and DataDome CAPTCHA pages. Easy to patch/unpatch, can be enabled/disabled on demand.",
   "keywords": [
     "automation",
@@ -42,8 +42,11 @@
     "url": "https://github.com/rebrowser/rebrowser-patches/issues"
   },
   "files": [
-    "/patches",
-    "/scripts"
+    "/scripts",
+    "/patches/puppeteer-core/24.8.1",
+    "/patches/puppeteer-core/25.14.0",
+    "/patches/playwright-core/1.52.0",
+    "/patches/playwright-core/1.64.1"
   ],
   "homepage": "https://rebrowser.net",
   "main": "scripts/patcher.js",
