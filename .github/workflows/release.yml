@@ -52,28 +52,31 @@ jobs:
       - run: npm install -g npm@^11
       - name: Build drop-in packages
         run: node release/build-packages.mjs
+      - name: Read release targets
+        run: node release/ci-env.mjs >> "$GITHUB_ENV"
       - name: Build Python wheels
-        run: |
-          set -e
-          beta=$(node -e "process.stdout.write(require('./release/versions.json').python[0].driver.version)")
-          node release/build-python.mjs 1.64.0 --driver-tgz "$REBROWSER_WORK_DIR/dist/rebrowser-playwright-core-${beta}.tgz"
+        run: node release/build-python.mjs "$PY_VERSION" --driver-tgz "$REBROWSER_WORK_DIR/dist/rebrowser-playwright-core-$PY_DRIVER.tgz" --out "$REBROWSER_WORK_DIR/dist-py"
       - run: npx --yes @puppeteer/browsers install chrome@stable --path "$REBROWSER_WORK_DIR/browsers" >/dev/null || true
       - name: Test
         run: |
           set -e
           dist="$REBROWSER_WORK_DIR/dist"
-          wheel=$(ls "$REBROWSER_WORK_DIR"/dist-py/*linux*x86_64*.whl | head -1)
-          xvfb-run -a node tests/run.mjs \
-            --pptr-core "$dist/rebrowser-puppeteer-core-25.14.0.tgz" --pptr "$dist/rebrowser-puppeteer-25.14.0.tgz" \
-            --pw-core "$dist/rebrowser-playwright-core-1.64.1.tgz" --pw "$dist/rebrowser-playwright-1.64.1.tgz" \
+          wheel=$(ls "$REBROWSER_WORK_DIR"/dist-py/*manylinux*x86_64*.whl 2>/dev/null | head -1)
+          [ -n "$wheel" ] || { echo "::error::no linux x86_64 wheel in $REBROWSER_WORK_DIR/dist-py"; exit 1; }
+          xvfb-run -a node tests/run.mjs --suites detection,scenarios,webdriver,smoke,python \
+            --pptr-core "$dist/rebrowser-puppeteer-core-$PPTR_VERSION.tgz" --pptr "$dist/rebrowser-puppeteer-$PPTR_VERSION.tgz" \
+            --pw-core "$dist/rebrowser-playwright-core-$PW_VERSION.tgz" --pw "$dist/rebrowser-playwright-$PW_VERSION.tgz" \
             --py-wheel "$wheel" --out "$REBROWSER_WORK_DIR/test-out"
       - name: Stage artifacts
         run: |
+          set -e
           mkdir -p staged/npm staged/pypi
-          cp "$REBROWSER_WORK_DIR"/dist/*.tgz staged/npm/
           cp "$REBROWSER_WORK_DIR"/dist/manifest.json staged/npm/
-          # Only the publishable (non python-driver) cores/wrappers/CLI go to npm; drop the driver-only core.
+          # only tarballs the manifest marks publishable (the Python-only driver core stays out)
+          node -e "const m=require(process.argv[1]);for(const a of m.artifacts)if(a.publish!==false)console.log(a.file)" "$REBROWSER_WORK_DIR/dist/manifest.json" \
+            | while read -r f; do cp "$REBROWSER_WORK_DIR/dist/$f" staged/npm/; done
           cp "$REBROWSER_WORK_DIR"/dist-py/*.whl staged/pypi/
+          ls staged/npm staged/pypi
       - uses: actions/upload-artifact@v4
         with:
           name: release-artifacts

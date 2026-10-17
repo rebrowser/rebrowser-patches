@@ -38,11 +38,11 @@ jobs:
       - name: Build drop-in packages
         run: node release/build-packages.mjs
 
+      - name: Read release targets
+        run: node release/ci-env.mjs >> "$GITHUB_ENV"
+
       - name: Build Python wheels
-        run: |
-          set -e
-          beta=$(node -e "const v=require('./release/versions.json');const p=v.python[0];process.stdout.write(p.driver.version)")
-          node release/build-python.mjs 1.64.0 --driver-tgz "$REBROWSER_WORK_DIR/dist/rebrowser-playwright-core-${beta}.tgz"
+        run: node release/build-python.mjs "$PY_VERSION" --driver-tgz "$REBROWSER_WORK_DIR/dist/rebrowser-playwright-core-$PY_DRIVER.tgz" --out "$REBROWSER_WORK_DIR/dist-py"
 
       - name: Install browser dependencies for tests
         run: npx --yes @puppeteer/browsers install chrome@stable --path "$REBROWSER_WORK_DIR/browsers" >/dev/null || true
@@ -51,12 +51,15 @@ jobs:
         run: |
           set -e
           dist="$REBROWSER_WORK_DIR/dist"
-          wheel=$(ls "$REBROWSER_WORK_DIR"/dist-py/*linux*x86_64*.whl | head -1)
+          wheel=$(ls "$REBROWSER_WORK_DIR"/dist-py/*manylinux*x86_64*.whl 2>/dev/null | head -1)
+          [ -n "$wheel" ] || { echo "::error::no linux x86_64 wheel in $REBROWSER_WORK_DIR/dist-py"; exit 1; }
+          # all five suites are listed explicitly, so a missing input fails the run instead of skipping a suite
           xvfb-run -a node tests/run.mjs \
-            --pptr-core "$dist/rebrowser-puppeteer-core-25.14.0.tgz" \
-            --pptr "$dist/rebrowser-puppeteer-25.14.0.tgz" \
-            --pw-core "$dist/rebrowser-playwright-core-1.64.1.tgz" \
-            --pw "$dist/rebrowser-playwright-1.64.1.tgz" \
+            --suites detection,scenarios,webdriver,smoke,python \
+            --pptr-core "$dist/rebrowser-puppeteer-core-$PPTR_VERSION.tgz" \
+            --pptr "$dist/rebrowser-puppeteer-$PPTR_VERSION.tgz" \
+            --pw-core "$dist/rebrowser-playwright-core-$PW_VERSION.tgz" \
+            --pw "$dist/rebrowser-playwright-$PW_VERSION.tgz" \
             --py-wheel "$wheel" \
             --out "$REBROWSER_WORK_DIR/test-out"
 
