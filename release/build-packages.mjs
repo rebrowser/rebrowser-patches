@@ -5,7 +5,7 @@ import path from 'node:path';
 import { main, parse } from './lib/cli.mjs';
 import { applyPatch } from './lib/diff.mjs';
 import { capture, log, run, step } from './lib/exec.mjs';
-import { checkCliPackFiles } from './lib/clipack.mjs';
+import { checkCliPackFiles, checkRepository } from './lib/clipack.mjs';
 import { integrityOfFile, sha256OfFile, shasumOfFile } from './lib/integrity.mjs';
 import { copyTree, fetchUpstream } from './lib/npm.mjs';
 import { defaultOutDir, ensureDir, exists, freshDir, repoPath, repoRoot, safeName, workPath } from './lib/paths.mjs';
@@ -88,7 +88,10 @@ async function buildOne({ templateName, upstream, version, patchesFrom, outDir }
   if (upstreamJson.name !== template.from || upstreamJson.version !== version) {
     throw new Error(`${upstream.pkg}@${version} tarball has package.json ${upstreamJson.name}@${upstreamJson.version}`);
   }
-  fs.writeFileSync(pjPath, `${JSON.stringify(transformPackageJson(upstreamJson, template, version), null, 2)}\n`);
+  const outJson = transformPackageJson(upstreamJson, template, version);
+  const repoProblem = checkRepository(outJson);
+  if (repoProblem) throw new Error(repoProblem);
+  fs.writeFileSync(pjPath, `${JSON.stringify(outJson, null, 2)}\n`);
 
   const banner = fs.readFileSync(path.join(TEMPLATE_DIR, `${templateName}.README.md`), 'utf8');
   const readmePath = path.join(pkgDir, 'README.md');
@@ -123,6 +126,8 @@ async function buildOne({ templateName, upstream, version, patchesFrom, outDir }
 
 async function buildCli(outDir, cliVersion) {
   const rootPkg = JSON.parse(fs.readFileSync(repoPath('package.json'), 'utf8'));
+  const cliRepoProblem = checkRepository(rootPkg);
+  if (cliRepoProblem) throw new Error(cliRepoProblem);
   if (rootPkg.version !== cliVersion) {
     log(`WARNING: root package.json version is ${rootPkg.version} but release/versions.json cliVersion is ${cliVersion}; packing ${rootPkg.version}`);
   }

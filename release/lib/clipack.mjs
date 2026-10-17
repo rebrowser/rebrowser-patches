@@ -41,3 +41,15 @@ export function checkCliPackFiles(files, versions) {
   if (!files.some((f) => f.startsWith('scripts/'))) problems.push('missing scripts/ (the patcher)');
   return problems;
 }
+
+// npm trusted publishing adds provenance, and npm rejects a publish whose package.json repository.url
+// doesn't match the repo the workflow ran in. Every npm package we build is published from this repo.
+export const PUBLISH_REPO = 'github.com/rebrowser/rebrowser-patches';
+
+/** Returns an error message if package.json's repository doesn't point at PUBLISH_REPO, else null. */
+export function checkRepository(pkgJson) {
+  const raw = typeof pkgJson.repository === 'string' ? pkgJson.repository : pkgJson.repository?.url;
+  const normalized = String(raw || '').replace(/^git\+/, '').replace(/^https?:\/\//, '').replace(/\.git$/, '').replace(/\/+$/, '');
+  return normalized === PUBLISH_REPO ? null
+    : `${pkgJson.name}: package.json repository is "${raw || ''}", but provenance requires https://${PUBLISH_REPO}`;
+}
