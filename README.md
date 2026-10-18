@@ -33,6 +33,10 @@ Another way is to actually use new packages instead of the original one. Here ar
 
 🚀 That's it! Just visit the [rebrowser-bot-detector](https://bot-detector.rebrowser.net/) page and test your patched browser.
 
+Notes:
+- The drop-ins patch the library code only, not the browser. Install a browser the same way as with the original package: `rebrowser-puppeteer` downloads Chrome on install, `rebrowser-playwright` needs `npx playwright install chromium` (or use `executablePath` / `channel: 'chrome'` with a Chrome you already have).
+- Since the release after 1.1.0, `rebrowser-puppeteer` and `rebrowser-playwright` depend on `rebrowser-puppeteer-core` / `rebrowser-playwright-core` under their real names. Earlier versions used an npm alias, and when the original `puppeteer` / `playwright` of the same version was installed in the same project, npm quietly gave the drop-in the **unpatched** core ([#74](https://github.com/rebrowser/rebrowser-patches/issues/74)).
+
 Our goal is to maintain and support these drop-in replacement packages with the latest versions, but we mainly focus on fresh versions, so if you're still using puppeteer 13.3.7 from the early 90s, it might be a good time to upgrade. There's a high chance that it won't really break anything as the API is quite stable over time.
 
 ## Available patches
@@ -48,7 +52,9 @@ In brief, it's a few lines of JavaScript on the page that are automatically call
 
 Our fix disables the automatic `Runtime.Enable` command on every frame. Instead, we manually create contexts with unknown IDs when a frame is created. Then, when code needs to be executed, there are multiple ways to get the context ID.
 
-#### 1. Create a new binding in the main world, call it and save its context ID.
+#### 1. Look up the main world's context ID from the DevTools side (mode `addBinding`, the default).
+The patch reads the frame's `document` in an isolated world, resolves that node again in the frame's main world and takes the context ID from the result. Nothing runs in the page, and nothing is added to it. Only if that lookup fails does it fall back to the original technique: create a binding in the main world, call it and save its context ID. The fallback cleans up after itself, but a page could briefly see a global with a random name.
+
 🟢 Pros: The ultimate approach that keeps access to the main world and works with web workers and iframes. You don't need to change any of your existing codebase.
 
 🔴 Cons: None are discovered so far.
@@ -70,7 +76,7 @@ This triggers `Runtime.executionContextCreated` events, allowing us to catch the
 Note: you can change settings for this patch on the fly using an environment variable. This allows you to easily switch between patched and non-patched versions based on your business logic.
 
 - `REBROWSER_PATCHES_RUNTIME_FIX_MODE=addBinding` &mdash; addBinding technique (default). Keeps main-world access and works with iframes and web workers.
-- `REBROWSER_PATCHES_RUNTIME_FIX_MODE=alwaysIsolated` &mdash; always run all scripts in an isolated context. Page scripts can't observe your execution, but you lose main-world access and web workers.
+- `REBROWSER_PATCHES_RUNTIME_FIX_MODE=alwaysIsolated` &mdash; always run all scripts in an isolated context. Page scripts can't observe your execution, but you lose main-world access, `page.exposeFunction()` and (Puppeteer) web workers.
 - `REBROWSER_PATCHES_RUNTIME_FIX_MODE=enableDisable` &mdash; use the Enable/Disable technique. **Not recommended:** it still calls `Runtime.enable` for a brief window, so it is not fully leak-free. Only use it if `addBinding` fails on a specific page.
 - `REBROWSER_PATCHES_RUNTIME_FIX_MODE=0` &mdash; completely disable fix for this leak
 - `REBROWSER_PATCHES_DEBUG=1` &mdash; enable some debugging messages
@@ -84,20 +90,23 @@ or in command line:
 REBROWSER_PATCHES_RUNTIME_FIX_MODE=alwaysIsolated node app.js
 ```
 
-### Change sourceURL to generic script name
-By default, Puppeteer adds `//# sourceURL=pptr:...` to every script in `page.evaluate()`. A remote website can detect this behavior and raise red flags. 
-This patch changes it to `//# sourceURL=app.js`. You can also adjust it via environment variable:
+### Keep library names out of stack traces
+By default, Puppeteer adds `//# sourceURL=pptr:...` to every script in `page.evaluate()`, and Playwright runs `page.evaluate()` through a helper class named `UtilityScript`. A page that takes `new Error().stack` while your code runs (for example from a getter your code touches) sees those names and knows it's being automated.
+
+The Puppeteer patch adds no sourceURL at all, so frames show `<anonymous>` like any other injected script. The Playwright patch renames the helper to a short name picked at random per process and shifts its line numbers, so there's no fixed name or position to look for. You can adjust it via environment variable:
 ```shell
-# use any generic filename
+# Puppeteer only: use a sourceURL of your choice
 REBROWSER_PATCHES_SOURCE_URL=jquery.min.js
-# use 0 to completely disable this patch
+# use 0 to completely disable this patch (Puppeteer and Playwright)
 REBROWSER_PATCHES_SOURCE_URL=0
 ```
 
 ### Hide `navigator.webdriver`
-By default Puppeteer and Playwright launch Chrome with `--enable-automation`, which sets `navigator.webdriver = true` &mdash; an obvious automation flag that many anti-bot systems check. This patch adds `--disable-blink-features=AutomationControlled` to the default launch arguments so `navigator.webdriver` stays `false`. Any `--disable-blink-features=...` you pass yourself is merged in, not overwritten.
+Chrome launched by Puppeteer or Playwright reports `navigator.webdriver = true` &mdash; an obvious automation flag that many anti-bot systems check. This patch adds `--disable-blink-features=AutomationControlled` to the default launch arguments so `navigator.webdriver` stays `false`. Any `--disable-blink-features=...` you pass yourself is merged in, not overwritten.
+
+Puppeteer also passes `--enable-automation`, which shows the "Chrome is being controlled by automated test software" bar. The Puppeteer patch drops it (Playwright stopped passing it in 1.64).
 ```shell
-# use 0 to disable this patch and keep Chrome's default behavior
+# use 0 to disable this patch and keep the library's default behavior
 REBROWSER_PATCHES_WEBDRIVER_FIX=0
 ```
 *Note: this only affects browsers launched by the library. If you connect to an existing browser, pass the switch yourself.*
@@ -168,7 +177,7 @@ Playwright patches include:
 
 Important: `page.pause()` method doesn't work with the enabled fix, it needs more investigation. You can just disable the fix completely while debugging using `REBROWSER_PATCHES_RUNTIME_FIX_MODE=0` env variable.
 
-These patches work only for Chrome for now. If you really want to use it with WebKit or Firefox, please open a new issue.
+The patches target Chromium. On Firefox and WebKit the Chromium-specific context handling is skipped, so one install can drive all three browsers (before 1.64.1 it crashed with `_sessions is undefined`). Only small shared changes, such as the renamed `UtilityScript` helper, apply there too.
 
 ✅ Latest fully tested version: 1.64.1 (released 2026-10-14)
 
@@ -183,6 +192,7 @@ import { addExtra } from 'puppeteer-extra'
 import rebrowserPuppeteer from 'rebrowser-puppeteer-core'
 const puppeteer = addExtra(rebrowserPuppeteer)
 ```
+Be careful with `puppeteer-extra-plugin-stealth`: its evasions override browser internals from JavaScript, and that is detectable on its own. On [rebrowser-bot-detector](https://bot-detector.rebrowser.net/) rebrowser-puppeteer with no plugins comes out clean, while adding the stealth plugin turns `nativeTampering` and `workerConsistency` red.
 
 ## Follow the project
 We're currently developing more patches to improve web automation transparency, which will be released in this repo soon. Please support the project by clicking ⭐️ star or watch button.
@@ -191,6 +201,8 @@ We're currently developing more patches to improve web automation transparency, 
 
 ## The fix doesn't help, I'm still getting blocked 🤯
 ⚠️ It's important to know that this fix alone won't make your browser bulletproof and undetectable. You need to address **many other aspects** such as proxies, proper user-agent and fingerprints (canvas, WebGL), and more.
+
+What the patches cover: the `Runtime.enable` leak, library names in stack traces and world names, `navigator.webdriver` and the automation infobar. What they don't touch: the `HeadlessChrome` token in the headless user agent, fingerprints (canvas, WebGL, fonts, screen), your IP reputation and how your script behaves (timing, mouse movement). CAPTCHA and bot-management products such as Cloudflare Turnstile, hCaptcha or Google search score all of these, so the patches alone won't get you past them.
 
 Always keep in mind: the less you manipulate browser internals via JS injections, the better. There are ways to detect that internal objects such as console, navigator, and others were affected by Proxy objects or Object.defineProperty. It's tricky, but it's always a cat-and-mouse game.
 

@@ -1,0 +1,6 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>leak-globals</title><script src="/detector.js"></script></head>
+<body><h1 id="title">Leak Globals</h1><textarea id="__detector"></textarea>
+<iframe id="same" src="/leak-frame.html"></iframe>
+<script>setTimeout(() => { const p = document.createElement('p'); p.id = 'late'; p.textContent = 'late'; document.body.appendChild(p) }, 300)</script>
+</body></html>

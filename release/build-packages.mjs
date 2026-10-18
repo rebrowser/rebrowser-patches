@@ -16,7 +16,8 @@ const usage = `Usage: node release/build-packages.mjs [--target <pkg>@<version>]
 Builds, for every release target in release/versions.json (or only the --target ones, e.g.
 --target puppeteer-core@25.14.0 --target playwright-core@1.52.0):
   rebrowser-<core>@V     npm tarball of <core>@V + patches/<core>/V/{lib,src}.patch + package.json/README transform
-  rebrowser-<wrapper>@V  npm tarball of <wrapper>@V (puppeteer / playwright), dependency on the core pinned to V
+  rebrowser-<wrapper>@V  npm tarball of <wrapper>@V (puppeteer / playwright), depending on rebrowser-<core>@V (exact) under
+                         its real name; every module specifier of the core in the wrapper's code is renamed to match
 and the CLI (rebrowser-patches@<cliVersion>, 'npm pack' of the repo root).
 Targets with role python-driver (playwright-core beta) get the core package only: it is embedded in the
 Python wheels, never published to npm.
@@ -40,7 +41,12 @@ const logFile = workPath('logs', 'build-packages.log');
  *  - template.set: replaced in place (name, description)
  *  - template.afterDescription: removed from the upstream file and inserted, in the template's order,
  *    right after "description" (keywords, contributors, repository, bugs)
- *  - template.dependencies (wrappers): replaces the core dependency; "{version}" -> the exact core version
+ *  - template.replaceDependencies (wrappers): { "<upstream dep>": { "name": "<new dep>", "version": "<spec>" } }.
+ *    The upstream dependency must be pinned at exactly the package version; it is replaced, in place, by <new dep>
+ *    at <spec> ("{version}" -> the exact package version). The core is deliberately NOT an npm alias
+ *    ("puppeteer-core": "npm:rebrowser-puppeteer-core@V"): next to a real puppeteer@V in the same project npm
+ *    dedupes the alias to the unpatched upstream core (npm/cli#4197, issue #74). Because the wrapper no longer
+ *    has a "<upstream dep>" dependency, rewriteSpecifiers() renames its module specifiers in the shipped code.
  */
 function transformPackageJson(upstreamJson, template, version) {
   const afterKeys = Object.keys(template.afterDescription || {});
@@ -56,19 +62,119 @@ function transformPackageJson(upstreamJson, template, version) {
     if (!(key in upstreamJson)) throw new Error(`package.json has no "${key}" to replace`);
   }
   if (!('description' in upstreamJson) && afterKeys.length) throw new Error('upstream package.json has no "description" to insert after');
-  if (template.dependencies) {
-    out.dependencies = { ...out.dependencies };
-    for (const [dep, spec] of Object.entries(template.dependencies)) {
-      if (out.dependencies[dep] !== version) {
-        throw new Error(`expected upstream dependency ${dep}@${version}, found ${out.dependencies[dep]}`);
+  if (template.replaceDependencies) {
+    const upstreamDeps = out.dependencies || {};
+    for (const dep of Object.keys(template.replaceDependencies)) {
+      if (upstreamDeps[dep] !== version) {
+        throw new Error(`expected upstream dependency ${dep}@${version}, found ${upstreamDeps[dep]}`);
       }
-      out.dependencies[dep] = spec.replaceAll('{version}', version);
+    }
+    out.dependencies = {};
+    for (const [dep, spec] of Object.entries(upstreamDeps)) {
+      const replacement = template.replaceDependencies[dep];
+      if (replacement) out.dependencies[replacement.name] = replacement.version.replaceAll('{version}', version);
+      else out.dependencies[dep] = spec;
     }
   }
   return out;
 }
 
-async function buildOne({ templateName, upstream, version, patchesFrom, outDir }) {
+const CODE_FILE = /\.[cm]?[jt]s$/; // .js .cjs .mjs .ts .mts .cts, so also .d.ts; never .map, README or LICENSE
+
+function listCodeFiles(dir) {
+  const files = [];
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const abs = path.join(dir, entry.name);
+    if (entry.isDirectory()) files.push(...listCodeFiles(abs));
+    else if (entry.isFile() && CODE_FILE.test(entry.name)) files.push(abs);
+  }
+  return files;
+}
+
+const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * The module specifiers of `name` that rewriteSpecifiers() renames, in two forms:
+ *  - a quoted one that is exactly `name` or starts with `name/`: 'name', "name/lib/x", import("name"). Groups 1 (quote)
+ *    and 2 (subpath: "/lib/x" or undefined). Not when it is one operand of a `+` concatenation ('name/' + x): such a
+ *    specifier is not complete, it is left alone for findUnrewrittenSpecifiers() to fail the build on.
+ *  - a static template literal (no `${`) that is the first argument of require( / require.resolve( / import(:
+ *    require(`name/lib/x`). Groups 3 (the call up to the backtick) and 4 (subpath).
+ * Prose that only contains the word (log messages, comments with backticks) does not match.
+ */
+const specifierRegex = (name) => {
+  const n = escapeRegex(name);
+  const quoted = `(?<!\\+\\s*)(['"])${n}(/[^'"]*)?\\1(?!\\s*\\+)`;
+  const template = `((?<![\\w$.])(?:require(?:\\.resolve)?|import)\\s*\\(\\s*)\`${n}(/(?:(?!\\$\\{)[^\`])*)?\`(?=\\s*[,)])`;
+  return new RegExp(`${quoted}|${template}`, 'g');
+};
+
+/** Renames the module specifiers of `from` to `to` in all code files of pkgDir. Returns { files, count, subpaths }. */
+function rewriteSpecifiers(pkgDir, from, to) {
+  const re = specifierRegex(from);
+  const subpaths = new Set();
+  let files = 0;
+  let count = 0;
+  for (const file of listCodeFiles(pkgDir)) {
+    const before = fs.readFileSync(file, 'utf8');
+    let n = 0;
+    const after = before.replace(re, (_match, quote, sub, callPrefix, templateSub) => {
+      n++;
+      const subpath = (callPrefix === undefined ? sub : templateSub) ?? '';
+      subpaths.add(subpath ? `.${subpath}` : '.');
+      return callPrefix === undefined ? `${quote}${to}${subpath}${quote}` : `${callPrefix}\`${to}${subpath}\``;
+    });
+    if (n === 0) continue;
+    fs.writeFileSync(file, after); // in place: keeps the file mode
+    files++;
+    count += n;
+  }
+  return { files, count, subpaths: [...subpaths].sort() };
+}
+
+/**
+ * Independent of specifierRegex(): the "file: text" of every require(...) / require.resolve(...) / import(...) call whose
+ * argument (the text up to the first closing paren, across lines) or `from '...'` clause still mentions the module `name` in
+ * any form: a template literal with `${`, a concatenation ('name/' + x), a literal rewriteSpecifiers() did not rename.
+ * Run after the rewrite: anything it returns is a specifier that would load the unpatched upstream core (or throw).
+ */
+function findUnrewrittenSpecifiers(text, name) {
+  const mention = new RegExp(`(?<![\\w-])${escapeRegex(name)}(?![\\w-])`);
+  const calls = /(?<![\w$.])(?:require(?:\.resolve)?|import)\s*\(([^)]{0,500})/g; // the argument may span lines
+  const fromClauses = /^[ \t]*(?:(?:import|export)\b[^\n]*?|\})[ \t]*\bfrom\s+(['"`])((?:(?!\1)[^\n])*)/gm; // import/export statements, not prose
+  const found = [];
+  for (const match of text.matchAll(calls)) if (mention.test(match[1])) found.push(match[0].trim());
+  for (const match of text.matchAll(fromClauses)) if (mention.test(match[2])) found.push(match[0].trim());
+  return found;
+}
+
+/** "file: call" for every module specifier of `name` the rewrite left (or could not handle) in the code files of pkgDir. */
+function findSpecifiers(pkgDir, name) {
+  const found = [];
+  for (const file of listCodeFiles(pkgDir)) {
+    for (const hit of findUnrewrittenSpecifiers(fs.readFileSync(file, 'utf8'), name)) found.push(`${path.relative(pkgDir, file)}: ${hit}`);
+  }
+  return found;
+}
+
+/** Whether a package.json "exports" field exports `subpath` ("." or "./x"): subpath map, "*" patterns, null targets. */
+function isExported(exportsField, subpath) {
+  const keys = exportsField && typeof exportsField === 'object' && !Array.isArray(exportsField) ? Object.keys(exportsField) : [];
+  if (!keys.some((k) => k.startsWith('.'))) return subpath === '.' && Boolean(exportsField); // string / array / conditions: main entry only
+  if (Object.hasOwn(exportsField, subpath)) return exportsField[subpath] != null;
+  let best = null;
+  for (const key of keys) {
+    const star = key.indexOf('*');
+    if (star === -1 || key.indexOf('*', star + 1) !== -1) continue;
+    const prefix = key.slice(0, star);
+    const suffix = key.slice(star + 1);
+    if (subpath.length < key.length || !subpath.startsWith(prefix) || !subpath.endsWith(suffix)) continue;
+    if (!best || prefix.length > best.prefix.length || (prefix.length === best.prefix.length && key.length > best.key.length)) best = { key, prefix };
+  }
+  return best !== null && exportsField[best.key] != null;
+}
+
+async function buildOne({ templateName, upstream, version, patchesFrom, outDir, coreJson }) {
   const template = loadTemplate(templateName);
   const stage = workPath('stage', safeName(`${templateName}@${version}`));
   const pkgDir = path.join(stage, 'package');
@@ -106,6 +212,24 @@ async function buildOne({ templateName, upstream, version, patchesFrom, outDir }
     const after = before.replaceAll(rw.from, rw.to);
     if (after === before) throw new Error(`rewrite made no change in ${rw.file} ("${rw.from}" not found)`);
     fs.writeFileSync(target, after);
+  }
+
+  // The wrapper depends on the renamed core under its real name (template.replaceDependencies), so every
+  // module specifier of the upstream core in the shipped code has to point at it too.
+  for (const [from, { name: to }] of Object.entries(template.replaceDependencies || {})) {
+    if (!coreJson || coreJson.name !== to || coreJson.version !== version) {
+      throw new Error(`${templateName}: replaces ${from} with ${to}@${version}, but the built core is ${coreJson ? `${coreJson.name}@${coreJson.version}` : 'missing'}`);
+    }
+    const { files, count, subpaths } = rewriteSpecifiers(pkgDir, from, to);
+    if (files === 0) throw new Error(`no module specifier of ${from} found in the ${templateName} code files (did the upstream package layout change?)`);
+    const left = findSpecifiers(pkgDir, from);
+    if (left.length) throw new Error(`module specifiers of ${from} left in ${templateName} after the rewrite (dynamic, concatenated or otherwise not renamed: they would load the unpatched core):\n  ${left.slice(0, 20).join('\n  ')}`);
+    if (coreJson.exports == null) throw new Error(`${to}@${version} package.json has no "exports" map: cannot verify the subpaths ${templateName} loads (${subpaths.join(' ')})`);
+    const notExported = subpaths.filter((sp) => !isExported(coreJson.exports, sp));
+    if (notExported.length) {
+      throw new Error(`${to}@${version} package.json "exports" does not export ${notExported.map((sp) => `${to}${sp.slice(1)}`).join(', ')}, which the ${templateName} code loads`);
+    }
+    log(`  ${templateName}: ${from} -> ${to} in ${count} specifier(s) / ${files} file(s); subpaths ${subpaths.join(' ')}`);
   }
 
   await run('npm', ['pack', '--ignore-scripts', '--pack-destination', outDir, '--silent'], { cwd: pkgDir, logFile, echo: false });
@@ -176,7 +300,8 @@ main(async () => {
     if (target.wrapper) {
       const wrapper = await step(`${target.wrapper}@${target.version}: wrapper`, async () => {
         const upstream = await fetchUpstream(target.wrapper, target.version, { logFile });
-        return buildOne({ templateName: `rebrowser-${target.wrapper}`, upstream, version: target.version, patchesFrom, outDir });
+        const coreJson = JSON.parse(await capture('tar', ['-xzOf', path.join(outDir, core.file), 'package/package.json']));
+        return buildOne({ templateName: `rebrowser-${target.wrapper}`, upstream, version: target.version, patchesFrom, outDir, coreJson });
       });
       // wrappers carry no patches of their own
       artifacts.push({ ...wrapper, patches: [], patchSha256: {}, kind: 'wrapper', ...meta });

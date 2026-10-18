@@ -1,4 +1,4 @@
-// Functional-regression scenarios (22 per API family) run against one library build in one browser.
+// Functional-regression scenarios (29 per API family) run against one library build in one browser.
 // usage: node scenarios.mjs <importName> <pptr|pw> <chromePath> <portA> <portB>
 //   portA = fixture site 127.0.0.1:<portA>, portB = fixture site localhost:<portB> (a different site -> OOPIF);
 //   both are served by the test runner. The patch mode comes from REBROWSER_PATCHES_RUNTIME_FIX_MODE.
@@ -389,7 +389,7 @@ if (pptr) {
     eq(await frame.isolatedRealm().evaluate(() => document.title), 'first', 'document.title via isolatedRealm')
   })
 } else {
-  // 22 (Playwright only; issue #81 class)
+  // 22 (Playwright only; issue #81: export, then restore several origins)
   await runScenario('storageState', async page => {
     await page.goto(urlA('main.html'))
     await page.evaluate(() => localStorage.setItem('scen-key', 'scen-val'))
@@ -398,8 +398,92 @@ if (pptr) {
     check(origin, `storageState has no origin entry for 127.0.0.1:${ports.A}: ${JSON.stringify(state.origins)}`)
     const item = origin.localStorage.find(i => i.name === 'scen-key')
     eq(item && item.value, 'scen-val', 'storageState localStorage scen-key')
+    // restore several origins into a new context (issue #81: this hung in alwaysIsolated mode)
+    const restored = await browser.newContext({
+      viewport: null,
+      storageState: {
+        cookies: [],
+        origins: [
+          { origin: `http://127.0.0.1:${ports.A}`, localStorage: [{ name: 'k', value: 'A' }] },
+          { origin: `http://localhost:${ports.B}`, localStorage: [{ name: 'k', value: 'B' }] },
+        ],
+      },
+    })
+    try {
+      const p = await restored.newPage()
+      await p.goto(urlA('main.html'))
+      eq(await p.evaluate(() => localStorage.getItem('k')), 'A', 'restored localStorage on site A')
+      await p.goto(`http://localhost:${ports.B}/main.html`)
+      eq(await p.evaluate(() => localStorage.getItem('k')), 'B', 'restored localStorage on site B')
+    } finally {
+      await restored.close().catch(() => {})
+    }
   })
 }
+
+// 23 (issue #129 class, the selector flavour)
+await runScenario('waitForSelector-across-navigation', async page => {
+  await page.goto(urlA('main.html'))
+  let settled = false
+  const wait = page.waitForSelector('h1[data-page="second"]', { timeout: 10000 })
+  wait.then(() => { settled = true }, () => {})
+  await sleep(400)
+  check(!settled, 'waitForSelector resolved before the navigation')
+  await page.goto(urlA('second.html'))
+  check(await wait, 'waitForSelector returned null')
+})
+
+// 24 (issue #86 class: an in-process child frame without its own URL)
+await runScenario('iframe-srcdoc', async page => {
+  await page.goto(urlA('iframes.html'))
+  const frame = await frameOf(page, '#srcdoc')
+  const v = await poll(async () => { const r = await readFrame(frame); return r.startsWith('srcdoc') && r }, 6000)
+  eq(v, FRAME_EXPECT('srcdoc'), 'frame DOM')
+})
+
+// 25 (issues #100, #116: the page reassigns the global `self`)
+await runScenario('page-reassigns-self', async page => {
+  await page.goto(urlA('self-reassigned.html'))
+  eq(await page.evaluate(() => document.getElementById('title').textContent), 'Self Reassigned')
+  check(await page.waitForSelector('#title', { timeout: 8000 }), 'waitForSelector returned null')
+})
+
+// 26 (issue #59: the page turns `self` into a throwing getter, like LavaMoat on MetaMask pages)
+await runScenario('page-scuttles-self', async page => {
+  await page.goto(urlA('self-scuttled.html'))
+  eq(await page.evaluate(() => document.getElementById('title').textContent), 'Self Scuttled')
+  check(await page.waitForSelector('#title', { timeout: 8000 }), 'waitForSelector returned null')
+})
+
+// 27 (issues #97, #115: frames attaching and detaching must not destroy the main frame's pending evaluate)
+await runScenario('iframe-churn-long-evaluate', async page => {
+  await page.goto(urlA('churn.html'))
+  const long = page.evaluate(() => new Promise(r => setTimeout(() => r('long-ok'), 5000)))
+  for (let i = 0; i < 20; i++) {
+    eq(await page.evaluate(() => document.getElementById('title').textContent), 'Churn', `short evaluate #${i}`)
+    await sleep(100)
+  }
+  eq(await long, 'long-ok', 'long evaluate')
+}, { timeout: 25000 })
+
+// 28 (issue #69: the page calls the exposed function while the document is still loading)
+await runScenario('exposeFunction-called-on-load', async page => {
+  await page.exposeFunction('nodeAdd', (a, b) => a + b)
+  await page.goto(urlA('expose-early.html'))
+  const v = await poll(async () => (await page.$eval('#out', el => el.textContent)) || false, 6000)
+  eq(v, '5', '#out text')
+})
+
+// 29 (issue #69: the exposed function must survive a reload)
+await runScenario('exposeFunction-after-reload', async page => {
+  await page.exposeFunction('nodeAdd', (a, b) => a + b)
+  await page.goto(urlA('expose.html'))
+  await page.click('#go')
+  eq(await poll(async () => (await page.$eval('#out', el => el.textContent)) || false, 6000), '5', '#out before reload')
+  await page.reload()
+  await page.click('#go')
+  eq(await poll(async () => (await page.$eval('#out', el => el.textContent)) || false, 6000), '5', '#out after reload')
+})
 
 // ---- shutdown: clean close with a deadline, then reap anything left over ----
 await Promise.race([Promise.resolve().then(() => browser.close()).catch(() => {}), sleep(10000)])

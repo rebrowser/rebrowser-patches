@@ -46,6 +46,9 @@ jobs:
 
       - name: Install browser dependencies for tests
         run: npx --yes @puppeteer/browsers install chrome@stable --path "$REBROWSER_WORK_DIR/browsers" >/dev/null || true
+      # Firefox + WebKit for the nonchromium suite (the patched Playwright must still drive them, #112/#126)
+      - name: Install Playwright Firefox and WebKit
+        run: npx --yes "playwright-core@$PW_VERSION" install --with-deps firefox webkit
 
       - name: Run test suite
         run: |
@@ -53,9 +56,9 @@ jobs:
           dist="$REBROWSER_WORK_DIR/dist"
           wheel=$(ls "$REBROWSER_WORK_DIR"/dist-py/*manylinux*x86_64*.whl 2>/dev/null | head -1)
           [ -n "$wheel" ] || { echo "::error::no linux x86_64 wheel in $REBROWSER_WORK_DIR/dist-py"; exit 1; }
-          # all five suites are listed explicitly, so a missing input fails the run instead of skipping a suite
+          # all seven suites are listed explicitly, so a missing input fails the run instead of skipping a suite
           xvfb-run -a node tests/run.mjs \
-            --suites detection,scenarios,webdriver,smoke,python \
+            --suites detection,scenarios,webdriver,leaks,smoke,python,nonchromium \
             --pptr-core "$dist/rebrowser-puppeteer-core-$PPTR_VERSION.tgz" \
             --pptr "$dist/rebrowser-puppeteer-$PPTR_VERSION.tgz" \
             --pw-core "$dist/rebrowser-playwright-core-$PW_VERSION.tgz" \

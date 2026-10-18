@@ -3,7 +3,7 @@ import path from 'node:path'
 import fs from 'node:fs'
 import os from 'node:os'
 
-export const ALL_SUITES = ['detection', 'scenarios', 'webdriver', 'smoke', 'python']
+export const ALL_SUITES = ['detection', 'scenarios', 'webdriver', 'leaks', 'smoke', 'python', 'nonchromium']
 
 export const HELP = `rebrowser-patches test harness
 
@@ -25,7 +25,8 @@ options:
   --chrome <path>     Chrome binary to use. Default: linux-x64 Chrome for Testing stable (npx @puppeteer/browsers),
                       linux-arm64 the official Google arm64 .deb extracted with dpkg-deb -x. Cached under <work>/browsers.
   --suites <list>     comma separated subset of: ${ALL_SUITES.join(', ')}
-                      (default: detection,scenarios,webdriver,smoke, plus python when --py-wheel is given)
+                      (default: detection,scenarios,webdriver,leaks,smoke, plus python when --py-wheel is given;
+                      nonchromium is opt-in and needs Playwright's firefox + webkit installed)
   --reps <n>          repetitions of every detection run (default 1)
   --keep              keep the throwaway project and temp dirs (debugging)
   -h, --help          show this help
@@ -89,7 +90,7 @@ export function parseCli(argv) {
   for (const k of ['pptrCore', 'pptr', 'pwCore', 'pw', 'pyWheel']) {
     if (args[k] && !fs.existsSync(args[k])) return { error: `${args[k]} does not exist` }
   }
-  const suites = v.suites ? v.suites.split(',').map(s => s.trim()).filter(Boolean) : [...ALL_SUITES.filter(s => s !== 'python'), ...(args.pyWheel ? ['python'] : [])]
+  const suites = v.suites ? v.suites.split(',').map(s => s.trim()).filter(Boolean) : [...ALL_SUITES.filter(s => s !== 'python' && s !== 'nonchromium'), ...(args.pyWheel ? ['python'] : [])]
   for (const s of suites) if (!ALL_SUITES.includes(s)) return { error: `unknown suite '${s}' (known: ${ALL_SUITES.join(', ')})` }
   if (suites.includes('python') && !args.pyWheel) return { error: 'the python suite needs --py-wheel <whl>' }
   if (!args.pptrCore && !args.pwCore && suites.some(s => s !== 'python')) return { error: 'give at least one of --pptr-core / --pw-core (only the python suite runs without them)' }

@@ -73,10 +73,22 @@ from: { pkg, version, integrity }, patches: [repo paths], patchSha256: {path: sh
 
 `<rebrowser-name>.json` is the code-free package.json transform: `set` (replaced in place: name,
 description), `afterDescription` (removed from upstream, inserted right after `description` in this order:
-keywords, contributors, repository, bugs), `dependencies` for wrappers (`{version}` = the exact core version),
-`patchFiles` (which `patches/<core>/<ver>/` files a core applies). `<rebrowser-name>.README.md` is the banner
-prepended to the upstream README. Both come from the 24.8.1 / 1.52.0 releases; rebuilding those versions
-reproduces the published tarballs file for file (only difference: wrappers pin the core exactly, not with `~`).
+keywords, contributors, repository, bugs), `patchFiles` (which `patches/<core>/<ver>/` files a core applies),
+`rewrites` (`{ file, from, to }` string replacements, e.g. the wrapper's `install.mjs` self-import) and, for
+wrappers, `replaceDependencies`: `{ "<upstream dep>": { "name": "<new dep>", "version": "{version}" } }`
+(`{version}` = the exact package version). The core dependency is replaced in place by `rebrowser-<core>` at
+that exact version under its real name, never as an npm alias (`"puppeteer-core": "npm:rebrowser-puppeteer-core@V"`):
+next to a real `puppeteer@V` in the same project npm dedupes the alias to the unpatched upstream core (#74).
+For every replaced dependency `build-packages.mjs` also renames each quoted module specifier of the core
+(`'playwright-core'`, `"playwright-core/lib/x"`, `import()`, `require.resolve()`, `.d.ts` imports, and static
+template literals in `` require(`...`) `` / `` require.resolve(`...`) `` / `` import(`...`) ``) to the new name
+in the wrapper's `.js .cjs .mjs .ts` files (not `.map`, README, LICENSE or prose that only mentions the name). It
+fails when no file changed, when the built core's `exports` does not export a subpath the wrapper loads, or
+when, after the rewrite, a `require(` / `require.resolve(` / `import(` argument (same line) or an `import` / `export`
+`from` clause still mentions the core name: `` `name/${x}` ``, `'name/' + x` and any other form it cannot rename. `<rebrowser-name>.README.md` is the banner prepended to the upstream README. Both come
+from the 24.8.1 / 1.52.0 releases; rebuilding those versions reproduces the published tarballs file for file (only
+difference: wrappers depend on the core under its real name pinned exactly, not on the published `~` alias, and their
+code loads that name).
 
 ## Notes
 

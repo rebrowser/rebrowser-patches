@@ -46,8 +46,10 @@ const SUITE_MODULES = {
   detection: './suites/detection.mjs',
   scenarios: './suites/scenarios.mjs',
   webdriver: './suites/webdriver.mjs',
+  leaks: './suites/leaks.mjs',
   smoke: './suites/smoke.mjs',
   python: './suites/python.mjs',
+  nonchromium: './suites/nonchromium.mjs',
 }
 
 const meta = {

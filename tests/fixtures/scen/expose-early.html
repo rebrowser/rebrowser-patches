@@ -1,0 +1,9 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>expose-early</title>
+<script>
+// calls the exposed function as soon as the document is parsed (issue #69)
+document.addEventListener('DOMContentLoaded', function () {
+  window.nodeAdd(2, 3).then(function (v) { document.getElementById('out').textContent = String(v) })
+})
+</script></head>
+<body><span id="out"></span></body></html>
