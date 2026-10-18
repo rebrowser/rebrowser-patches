@@ -143,7 +143,8 @@ export async function aliasCollision(ctx, s, fam) {
     name: `alias-collision-${fam.key}`,
     private: true,
     type: 'module',
-    dependencies: { [upstreamWrapper]: w.version, [w.name]: `file:${w.file}` },
+    // upstream at its own version (a re-release like 25.14.100 has no upstream twin)
+    dependencies: { [upstreamWrapper]: fam.upstream.version, [w.name]: `file:${w.file}` },
     overrides: { [coreName]: `file:${fam.patched.file}` },
   }, null, 2))
   // --ignore-scripts (npmInstall's default) plus the skip variables: no browser download for either package
@@ -153,12 +154,12 @@ export async function aliasCollision(ctx, s, fam) {
     if (NETWORK_ERROR.test(out) && !/E404|ETARGET/.test(out)) {
       s.note(`${w.name}: alias-collision check SKIPPED (npm registry unreachable): ${tail(out, 300).replace(/\s+/g, ' ')}`)
     } else {
-      s.gate(id, false, `npm install of ${upstreamWrapper}@${w.version} + ${w.name} failed: ${tail(out, 500)}`)
+      s.gate(id, false, `npm install of ${upstreamWrapper}@${fam.upstream.version} + ${w.name}@${w.version} failed: ${tail(out, 500)}`)
     }
     return
   }
   stageWorkers(dir)
-  const c = await runCmd('node', [path.join(dir, 'workers', 'alias-collision.mjs'), w.name, coreName, fam.patched.version, upstreamWrapper, w.version], { cwd: dir, tmp: ctx.tmp, timeoutMs: 120000 })
+  const c = await runCmd('node', [path.join(dir, 'workers', 'alias-collision.mjs'), w.name, coreName, fam.patched.version, upstreamWrapper, fam.upstream.version], { cwd: dir, tmp: ctx.tmp, timeoutMs: 120000 })
   const found = c.code === 0 ? lastJsonLine(c.stdout) : null
   s.gate(id, c.code === 0 && found?.ok === true,
     c.code === 0 ? `${found?.core} loaded from ${found?.coreDir} (patched code in ${found?.patchedFile}) next to ${found?.upstream}` : tail(c.stderr || c.stdout, 500))

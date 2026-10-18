@@ -48,7 +48,7 @@ jobs:
         run: npx --yes @puppeteer/browsers install chrome@stable --path "$REBROWSER_WORK_DIR/browsers" >/dev/null || true
       # Firefox + WebKit for the nonchromium suite (the patched Playwright must still drive them, #112/#126)
       - name: Install Playwright Firefox and WebKit
-        run: npx --yes "playwright-core@$PW_VERSION" install --with-deps firefox webkit
+        run: npx --yes "playwright-core@$PW_UPSTREAM" install --with-deps firefox webkit
 
       - name: Run test suite
         run: |
@@ -64,6 +64,7 @@ jobs:
             --pw-core "$dist/rebrowser-playwright-core-$PW_VERSION.tgz" \
             --pw "$dist/rebrowser-playwright-$PW_VERSION.tgz" \
             --py-wheel "$wheel" \
+            --pptr-upstream "$PPTR_UPSTREAM" --pw-upstream "$PW_UPSTREAM" --py-upstream "$PY_UPSTREAM" \
             --out "$REBROWSER_WORK_DIR/test-out"
 
       - name: Upload test results

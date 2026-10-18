@@ -19,6 +19,8 @@ inputs (built artifacts; at least one of --pptr-core / --pw-core unless only the
   --py-wheel <whl>    rebrowser_playwright wheel for this platform (enables the python suite)
   --pptr-upstream <v> upstream puppeteer-core version for the unpatched controls (default: the tarball's version)
   --pw-upstream <v>   upstream playwright-core version for the unpatched controls (default: the tarball's version)
+  --py-upstream <v>   upstream PyPI playwright version for the python suite's controls (default: the wheel's version)
+                      (the three --*-upstream options are needed for a re-release, whose version has no upstream twin)
 
 options:
   --out <dir>         where results.json and summary.txt are written (required)
@@ -55,6 +57,7 @@ export function parseCli(argv) {
         'py-wheel': { type: 'string' },
         'pptr-upstream': { type: 'string' },
         'pw-upstream': { type: 'string' },
+        'py-upstream': { type: 'string' },
         chrome: { type: 'string' },
         suites: { type: 'string' },
         reps: { type: 'string' },
@@ -78,6 +81,7 @@ export function parseCli(argv) {
     pyWheel: abs(v['py-wheel']),
     pptrUpstream: v['pptr-upstream'],
     pwUpstream: v['pw-upstream'],
+    pyUpstream: v['py-upstream'],
     chrome: v.chrome,
     out: abs(v.out),
     reps: v.reps === undefined ? 1 : Number(v.reps),

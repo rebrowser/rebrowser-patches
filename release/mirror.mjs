@@ -102,9 +102,10 @@ function pythonJob(pySrc) {
   const py = loadVersions().python?.[0];
   if (!py) return null;
   const src = pySrc || workPath('py', `playwright-python-${py.version}`);
+  const published = py.publishVersion || py.version; // a re-release gets its own branch
   return {
     repo: 'rebrowser-playwright-python',
-    branch: py.version,
+    branch: published,
     prepare: async () => {
       if (!fs.existsSync(path.join(src, '.git'))) throw new Error(`no prepared playwright-python source at ${src}; run release/build-python.mjs first or pass --python-src`);
       const tag = (await capture('git', ['describe', '--tags', '--exact-match', 'HEAD'], { cwd: src }).catch(() => '')).trim();
@@ -116,7 +117,7 @@ function pythonJob(pySrc) {
       await run('git', ['archive', '-o', archive, 'HEAD'], { cwd: src, echo: false });
       return {
         original: { message: `playwright-python ${py.version} original`, fill: async (dest) => run('tar', ['xf', archive, '-C', dest], { echo: false }) },
-        patched: { message: `rebrowser-playwright ${py.version} patched with rebrowser-patches`, fill: copyFiles(src, files) },
+        patched: { message: `rebrowser-playwright ${published} patched with rebrowser-patches`, fill: copyFiles(src, files) },
       };
     },
   };

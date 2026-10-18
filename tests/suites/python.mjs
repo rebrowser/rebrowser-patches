@@ -21,7 +21,9 @@ export async function run(ctx) {
   const wheel = ctx.args.pyWheel
   const m = path.basename(wheel).match(/^([^-]+)-([^-]+)-/)
   if (!m) throw new Error(`cannot parse the wheel file name ${path.basename(wheel)}`)
-  const [, dist, version] = m
+  const [, dist, wheelVersion] = m
+  // the unpatched control comes from PyPI: a re-release (e.g. 1.64.100) has no upstream twin, so --py-upstream names it
+  const version = ctx.args.pyUpstream || wheelVersion
   const py = process.env.PYTHON || 'python3'
   const venv = path.join(ctx.runDir, 'venv')
   const vpy = process.platform === 'win32' ? path.join(venv, 'Scripts', 'python.exe') : path.join(venv, 'bin', 'python')
@@ -103,6 +105,6 @@ export async function run(ctx) {
   }
   s.line('-- scenarios --')
   for (const l of table(['scenario', ...configs.map(c => c.id)], [...grid].map(([n, row]) => [n, ...configs.map(c => ({ ok: 'ok', fail: 'FAIL', timeout: 'TIMEOUT' }[row[c.id]] || row[c.id] || 'MISSING'))]))) s.line(l)
-  s.note(`wheel ${path.basename(wheel)} (${dist} ${version})`)
+  s.note(`wheel ${path.basename(wheel)} (${dist} ${wheelVersion}, unpatched control playwright==${version})`)
   return s.finish()
 }

@@ -27,7 +27,8 @@ node release/build-python.mjs <pyVer> --driver-tgz dist/rebrowser-playwright-cor
 ```
 
 Current targets (puppeteer-core 25.14.0, playwright-core 1.64.1, python 1.64.0 with driver
-playwright-core 1.64.0-beta-1791568591000, CLI 1.1.0) and the released history are in `versions.json`.
+playwright-core 1.64.0-beta-1791568591000, CLI 1.1.1; re-released as 25.14.100 / 1.64.100 / Python 1.64.100) and the
+released history are in `versions.json`.
 
 ## versions.json schema
 
@@ -37,7 +38,8 @@ playwright-core 1.64.0-beta-1791568591000, CLI 1.1.0) and the released history a
   "targets": [                            // npm core packages the next release builds
     {
       "package": "puppeteer-core",        // upstream npm name; the drop-in is "rebrowser-" + package
-      "version": "25.14.0",               // upstream version == published version
+      "version": "25.14.0",               // upstream version (patch dir, npm tarball, git ref)
+      "publishVersion": "25.14.100",      // optional: published version of a re-release (X.Y.100+n), else = version
       "repo": "puppeteer/puppeteer",      // GitHub repo of the source
       "ref": "puppeteer-v25.14.0",        // tag or commit (npm gitHead) of that version
       "previous": "24.8.1",               // last released version (rollback target, default port baseline)

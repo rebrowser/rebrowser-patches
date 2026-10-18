@@ -35,7 +35,7 @@ Another way is to actually use new packages instead of the original one. Here ar
 
 Notes:
 - The drop-ins patch the library code only, not the browser. Install a browser the same way as with the original package: `rebrowser-puppeteer` downloads Chrome on install, `rebrowser-playwright` needs `npx playwright install chromium` (or use `executablePath` / `channel: 'chrome'` with a Chrome you already have).
-- Since the release after 1.1.0, `rebrowser-puppeteer` and `rebrowser-playwright` depend on `rebrowser-puppeteer-core` / `rebrowser-playwright-core` under their real names. Earlier versions used an npm alias, and when the original `puppeteer` / `playwright` of the same version was installed in the same project, npm quietly gave the drop-in the **unpatched** core ([#74](https://github.com/rebrowser/rebrowser-patches/issues/74)).
+- Since 1.1.1 (drop-ins 25.14.100 / 1.64.100), `rebrowser-puppeteer` and `rebrowser-playwright` depend on `rebrowser-puppeteer-core` / `rebrowser-playwright-core` under their real names. Earlier versions used an npm alias, and when the original `puppeteer` / `playwright` of the same version was installed in the same project, npm quietly gave the drop-in the **unpatched** core ([#74](https://github.com/rebrowser/rebrowser-patches/issues/74)).
 
 Our goal is to maintain and support these drop-in replacement packages with the latest versions, but we mainly focus on fresh versions, so if you're still using puppeteer 13.3.7 from the early 90s, it might be a good time to upgrade. There's a high chance that it won't really break anything as the API is quite stable over time.
 
@@ -167,7 +167,7 @@ If you already have your package patched and want to update to the latest versio
 All these versions are just wrappers around Node.js version of Playwright. You need to find `driver` folder inside your Playwright package and run this patch with `--packagePath=$yourDriverFolder/$yourPlatform/package`.
 
 ## Puppeteer support
-✅ Latest fully tested version: 25.14.0 (released 2026-10-14)
+✅ Latest fully tested version: 25.14.0 (released 2026-10-14), drop-in packages `25.14.100`
 
 ## Playwright support
 Playwright patches include:
@@ -179,7 +179,7 @@ Important: `page.pause()` method doesn't work with the enabled fix, it needs mor
 
 The patches target Chromium. On Firefox and WebKit the Chromium-specific context handling is skipped, so one install can drive all three browsers (before 1.64.1 it crashed with `_sessions is undefined`). Only small shared changes, such as the renamed `UtilityScript` helper, apply there too.
 
-✅ Latest fully tested version: 1.64.1 (released 2026-10-14)
+✅ Latest fully tested version: 1.64.1 (released 2026-10-14), drop-in packages `1.64.100` (Python: `1.64.100`, built from playwright-python 1.64.0)
 
 ## How to use `rebrowser-puppeteer` with `puppeteer-extra`?
 Use `addExtra` method, here is the example:

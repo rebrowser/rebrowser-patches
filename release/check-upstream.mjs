@@ -23,6 +23,15 @@ function currentOf(pkg) {
   return targets.find((t) => t.package === pkg && t.role === 'release') ?? null;
 }
 
+// After a re-release (publishVersion X.Y.100+n), later upstream X.Y.z patch versions are skipped: publishing one would
+// put a lower version on `latest`. Port the next minor instead (RELEASING.md "Re-release").
+function statusOf(cmp, current, latestVersion) {
+  if (cmp > 0 && current?.publishVersion && latestVersion.split('.').slice(0, 2).join('.') === current.version.split('.').slice(0, 2).join('.')) {
+    return `skip (the ${current.version.split('.').slice(0, 2).join('.')} line is closed by the ${current.publishVersion} re-release)`;
+  }
+  return cmp > 0 ? 'NEW' : cmp === 0 ? 'up-to-date' : 'target-ahead-of-latest';
+}
+
 async function checkNpm(pkg) {
   const current = currentOf(pkg);
   const latest = await getTagMeta(pkg, 'latest');
@@ -32,7 +41,7 @@ async function checkNpm(pkg) {
     package: pkg,
     current: current?.version ?? null,
     latest: latest.version,
-    status: cmp > 0 ? 'NEW' : cmp === 0 ? 'up-to-date' : 'target-ahead-of-latest',
+    status: statusOf(cmp, current, latest.version),
     gitHead: latest.gitHead ?? null,
     ref: latest.gitHead ?? null,
     currentRef: current?.ref ?? null,
@@ -56,7 +65,7 @@ async function checkPython() {
     package: 'playwright-python',
     current: current?.version ?? null,
     latest,
-    status: cmp > 0 ? 'NEW' : cmp === 0 ? 'up-to-date' : 'target-ahead-of-latest',
+    status: statusOf(cmp, current, latest),
     ref: `v${latest}`,
     currentRef: current?.ref ?? null,
     driver: {
