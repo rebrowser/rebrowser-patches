@@ -62,6 +62,9 @@ Release. The python-driver core is embedded in the wheels and is not published t
 node release/mirror.mjs --manifest <work>/dist --yes   # needs WEB_GITHUB_TOKEN
 ```
 Pushes a per-version branch to each `rebrowser-<name>` repo. Existing branches are never force-pushed.
+Then it points each repo's default branch at its highest version branch, so the repo page shows the latest
+release. That needs `Administration: write` on the token and an admin role for its account; without them it
+prints a warning, and once they're granted `node release/mirror.mjs --default-branch-only --yes` catches up.
 
 ## 7. Verify and close out
 Install from npm and PyPI into clean dirs and re-run `tests/run.mjs` against the published packages.

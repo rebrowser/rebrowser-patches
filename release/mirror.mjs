@@ -11,9 +11,14 @@
  * original = the playwright-python tag, patched = the prepared source tree that build-python.mjs
  * built the wheels from (<work>/py/playwright-python-<version>, override with --python-src).
  *
- *   node release/mirror.mjs --manifest <dir|file> [--python-src <dir>] [--yes]
+ *   node release/mirror.mjs --manifest <dir|file> [--python-src <dir>] [--no-default-branch] [--yes]
+ *   node release/mirror.mjs --default-branch-only [--yes]
  *
  * Without --yes it builds the branches locally (under <work>/mirror) and prints them, pushing nothing.
+ * After pushing, each repo's default branch is moved to its highest version branch, so the repo page shows the
+ * latest release (never moved backwards when an older release is mirrored). That needs the token to have
+ * "Administration: write" on the repo (and the account to be a repo admin); without it a warning is printed and
+ * the mirror still succeeds. --default-branch-only does just that step for all five repos.
  * Auth: WEB_GITHUB_TOKEN (or GH_TOKEN), used only in the push URL, never written to git config.
  */
 import fs from 'node:fs';
@@ -23,8 +28,10 @@ import { run, capture, log, step } from './lib/exec.mjs';
 import { fetchUpstream } from './lib/npm.mjs';
 import { workPath, freshDir } from './lib/paths.mjs';
 import { loadVersions } from './lib/versions.mjs';
+import { compareVersions } from './lib/semver.mjs';
 
 const ORG = 'rebrowser';
+const MIRROR_REPOS = ['rebrowser-puppeteer-core', 'rebrowser-puppeteer', 'rebrowser-playwright-core', 'rebrowser-playwright', 'rebrowser-playwright-python'];
 const NOT_MIRRORED = new Set(['rebrowser-patches']); // the CLI lives in this repo
 const GIT_ID = ['-c', 'user.name=rebrowsernet', '-c', 'user.email=177570262+rebrowsernet@users.noreply.github.com'];
 
@@ -82,6 +89,42 @@ async function mirror({ repo, branch, original, patched }, doPush) {
   return 'pushed';
 }
 
+async function githubApi(method, url, body) {
+  const r = await fetch(`https://api.github.com/repos/${ORG}/${url}`, {
+    method,
+    headers: { authorization: `Bearer ${token()}`, accept: 'application/vnd.github+json', 'x-github-api-version': '2022-11-28', 'content-type': 'application/json' },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const text = await r.text();
+  return { status: r.status, json: text ? JSON.parse(text) : null, accepted: r.headers.get('x-accepted-github-permissions') };
+}
+
+const isRelease = (name) => /^\d+\.\d+\.\d+$/.test(name);
+
+/** Point the repo's default branch at its highest version branch. Returns a short status string. */
+async function setDefaultBranch(repo, doIt) {
+  const branches = [];
+  for (let page = 1; page < 20; page++) {
+    const { status, json } = await githubApi('GET', `${repo}/branches?per_page=100&page=${page}`);
+    if (status !== 200) throw new Error(`list branches of ${repo}: HTTP ${status} ${json?.message ?? ''}`);
+    branches.push(...json.map((b) => b.name));
+    if (json.length < 100) break;
+  }
+  const versions = branches.filter(isRelease).sort(compareVersions);
+  const latest = versions.at(-1);
+  if (!latest) return 'no version branch';
+  const { json: info } = await githubApi('GET', repo);
+  if (info.default_branch === latest) return `default branch already ${latest}`;
+  if (!doIt) return `would set default branch ${info.default_branch} -> ${latest} (dry run)`;
+  const { status, json, accepted } = await githubApi('PATCH', repo, { default_branch: latest });
+  if (status === 200 && json.default_branch === latest) return `default branch ${info.default_branch} -> ${latest}`;
+  if (status === 403 || status === 404) {
+    log(`WARNING: cannot change the default branch of ${ORG}/${repo} (HTTP ${status}${accepted ? `, needs ${accepted}` : ''}). Give the token "Administration: write" on it and make its account a repo admin, then run: node release/mirror.mjs --default-branch-only --yes`);
+    return `default branch NOT changed (${info.default_branch}; wanted ${latest})`;
+  }
+  throw new Error(`set default branch of ${repo}: HTTP ${status} ${json?.message ?? ''}`);
+}
+
 function npmJobs(manifest) {
   return manifest.artifacts
     .filter((a) => a.publish !== false && !NOT_MIRRORED.has(a.name))
@@ -125,11 +168,15 @@ function pythonJob(pySrc) {
 
 main(async () => {
   const { values } = parse({
-    usage: 'mirror.mjs --manifest <dir|file> [--python-src <dir>] [--no-python] [--yes]',
-    options: { manifest: { type: 'string' }, 'python-src': { type: 'string' }, 'no-python': { type: 'boolean' }, yes: { type: 'boolean' } },
+    usage: 'mirror.mjs --manifest <dir|file> [--python-src <dir>] [--no-python] [--no-default-branch] [--yes]\n       mirror.mjs --default-branch-only [--yes]',
+    options: { manifest: { type: 'string' }, 'python-src': { type: 'string' }, 'no-python': { type: 'boolean' }, 'no-default-branch': { type: 'boolean' }, 'default-branch-only': { type: 'boolean' }, yes: { type: 'boolean' } },
   });
-  if (!values.manifest) throw new Error('--manifest is required');
   if (!token()) throw new Error('WEB_GITHUB_TOKEN (or GH_TOKEN) is required');
+  if (values['default-branch-only']) {
+    for (const repo of MIRROR_REPOS) log(`${repo}: ${await setDefaultBranch(repo, !!values.yes)}`);
+    return;
+  }
+  if (!values.manifest) throw new Error('--manifest is required');
   const jobs = npmJobs(loadManifest(values.manifest));
   if (!values['no-python']) { const pj = pythonJob(values['python-src']); if (pj) jobs.push(pj); }
 
@@ -142,4 +189,7 @@ main(async () => {
   }
   const n = (r) => results.filter((x) => x === r).length;
   log(`mirror: ${n('pushed')} pushed, ${n('exists')} already present, ${n('would-push')} pending (dry run)`);
+  if (!values['no-default-branch']) {
+    for (const repo of [...new Set(jobs.map((j) => j.repo))]) log(`${repo}: ${await setDefaultBranch(repo, !!values.yes)}`);
+  }
 });
