@@ -21,6 +21,9 @@ Builds, for every release target in release/versions.json (or only the --target 
 and the CLI (rebrowser-patches@<cliVersion>, 'npm pack' of the repo root).
 Targets with role python-driver (playwright-core beta) get the core package only: it is embedded in the
 Python wheels, never published to npm.
+A target's "publishVersion" (re-release of the same upstream version, X.Y.100+n) becomes the version of the built
+packages and their tarball names, and the version the wrapper pins its core to; patches and upstream tarballs stay
+keyed by "version".
 
 Templates: release/templates/<rebrowser-name>.json (+ .README.md banner). Tarballs are packed with
 'npm pack --ignore-scripts' into --out (default <work>/dist) together with manifest.json.
@@ -48,12 +51,12 @@ const logFile = workPath('logs', 'build-packages.log');
  *    dedupes the alias to the unpatched upstream core (npm/cli#4197, issue #74). Because the wrapper no longer
  *    has a "<upstream dep>" dependency, rewriteSpecifiers() renames its module specifiers in the shipped code.
  */
-function transformPackageJson(upstreamJson, template, version) {
+function transformPackageJson(upstreamJson, template, version, publishVersion = version) {
   const afterKeys = Object.keys(template.afterDescription || {});
   const out = {};
   for (const [key, value] of Object.entries(upstreamJson)) {
     if (afterKeys.includes(key)) continue;
-    out[key] = key in template.set ? template.set[key] : value;
+    out[key] = key in template.set ? template.set[key] : key === 'version' ? publishVersion : value;
     if (key === 'description') {
       for (const k of afterKeys) out[k] = template.afterDescription[k];
     }
@@ -72,7 +75,7 @@ function transformPackageJson(upstreamJson, template, version) {
     out.dependencies = {};
     for (const [dep, spec] of Object.entries(upstreamDeps)) {
       const replacement = template.replaceDependencies[dep];
-      if (replacement) out.dependencies[replacement.name] = replacement.version.replaceAll('{version}', version);
+      if (replacement) out.dependencies[replacement.name] = replacement.version.replaceAll('{version}', publishVersion);
       else out.dependencies[dep] = spec;
     }
   }
@@ -174,7 +177,7 @@ function isExported(exportsField, subpath) {
   return best !== null && exportsField[best.key] != null;
 }
 
-async function buildOne({ templateName, upstream, version, patchesFrom, outDir, coreJson }) {
+async function buildOne({ templateName, upstream, version, publishVersion = version, patchesFrom, outDir, coreJson }) {
   const template = loadTemplate(templateName);
   const stage = workPath('stage', safeName(`${templateName}@${version}`));
   const pkgDir = path.join(stage, 'package');
@@ -194,7 +197,7 @@ async function buildOne({ templateName, upstream, version, patchesFrom, outDir, 
   if (upstreamJson.name !== template.from || upstreamJson.version !== version) {
     throw new Error(`${upstream.pkg}@${version} tarball has package.json ${upstreamJson.name}@${upstreamJson.version}`);
   }
-  const outJson = transformPackageJson(upstreamJson, template, version);
+  const outJson = transformPackageJson(upstreamJson, template, version, publishVersion);
   const repoProblem = checkRepository(outJson);
   if (repoProblem) throw new Error(repoProblem);
   fs.writeFileSync(pjPath, `${JSON.stringify(outJson, null, 2)}\n`);
@@ -217,8 +220,8 @@ async function buildOne({ templateName, upstream, version, patchesFrom, outDir, 
   // The wrapper depends on the renamed core under its real name (template.replaceDependencies), so every
   // module specifier of the upstream core in the shipped code has to point at it too.
   for (const [from, { name: to }] of Object.entries(template.replaceDependencies || {})) {
-    if (!coreJson || coreJson.name !== to || coreJson.version !== version) {
-      throw new Error(`${templateName}: replaces ${from} with ${to}@${version}, but the built core is ${coreJson ? `${coreJson.name}@${coreJson.version}` : 'missing'}`);
+    if (!coreJson || coreJson.name !== to || coreJson.version !== publishVersion) {
+      throw new Error(`${templateName}: replaces ${from} with ${to}@${publishVersion}, but the built core is ${coreJson ? `${coreJson.name}@${coreJson.version}` : 'missing'}`);
     }
     const { files, count, subpaths } = rewriteSpecifiers(pkgDir, from, to);
     if (files === 0) throw new Error(`no module specifier of ${from} found in the ${templateName} code files (did the upstream package layout change?)`);
@@ -233,12 +236,12 @@ async function buildOne({ templateName, upstream, version, patchesFrom, outDir, 
   }
 
   await run('npm', ['pack', '--ignore-scripts', '--pack-destination', outDir, '--silent'], { cwd: pkgDir, logFile, echo: false });
-  const file = `${templateName}-${version}.tgz`;
+  const file = `${templateName}-${publishVersion}.tgz`;
   const abs = path.join(outDir, file);
   if (!exists(abs)) throw new Error(`npm pack did not produce ${abs}`);
   return {
     name: templateName,
-    version,
+    version: publishVersion,
     file,
     integrity: integrityOfFile(abs),
     shasum: shasumOfFile(abs),
@@ -246,6 +249,22 @@ async function buildOne({ templateName, upstream, version, patchesFrom, outDir, 
     patches,
     patchSha256: Object.fromEntries(patches.map((p) => [p, sha256OfFile(repoPath(p))])),
   };
+}
+
+/**
+ * The version a target is published as: its "publishVersion" for a same-version re-release, else "version".
+ * A re-release keeps major.minor and uses patch 100+n (RELEASING.md "Re-release"), so it sorts above every
+ * upstream X.Y.z patch release and never collides with one.
+ */
+function checkPublishVersion(target) {
+  const pv = target.publishVersion;
+  if (!pv || pv === target.version) return target.version;
+  const [maj, min] = target.version.split('.');
+  const m = /^(\d+)\.(\d+)\.(\d+)$/.exec(pv);
+  if (!m || m[1] !== maj || m[2] !== min || Number(m[3]) < 100) {
+    throw new Error(`${target.package}@${target.version}: publishVersion ${pv} must be ${maj}.${min}.<100 or more>`);
+  }
+  return pv;
 }
 
 async function buildCli(outDir, cliVersion) {
@@ -291,17 +310,19 @@ main(async () => {
   for (const target of targets) {
     const meta = { role: target.role ?? 'release', publish: target.publish ?? false, npmTag: target.npmTag ?? null };
     const patchesFrom = { package: target.package, version: target.version };
-    const core = await step(`${target.package}@${target.version}: core`, async () => {
+    const publishVersion = checkPublishVersion(target);
+    const label = publishVersion === target.version ? target.version : `${target.version} as ${publishVersion}`;
+    const core = await step(`${target.package}@${label}: core`, async () => {
       const upstream = await fetchUpstream(target.package, target.version, { logFile });
-      return buildOne({ templateName: `rebrowser-${target.package}`, upstream, version: target.version, patchesFrom, outDir });
+      return buildOne({ templateName: `rebrowser-${target.package}`, upstream, version: target.version, publishVersion, patchesFrom, outDir });
     });
     artifacts.push({ ...core, kind: 'core', ...meta });
 
     if (target.wrapper) {
-      const wrapper = await step(`${target.wrapper}@${target.version}: wrapper`, async () => {
+      const wrapper = await step(`${target.wrapper}@${label}: wrapper`, async () => {
         const upstream = await fetchUpstream(target.wrapper, target.version, { logFile });
         const coreJson = JSON.parse(await capture('tar', ['-xzOf', path.join(outDir, core.file), 'package/package.json']));
-        return buildOne({ templateName: `rebrowser-${target.wrapper}`, upstream, version: target.version, patchesFrom, outDir, coreJson });
+        return buildOne({ templateName: `rebrowser-${target.wrapper}`, upstream, version: target.version, publishVersion, patchesFrom, outDir, coreJson });
       });
       // wrappers carry no patches of their own
       artifacts.push({ ...wrapper, patches: [], patchSha256: {}, kind: 'wrapper', ...meta });

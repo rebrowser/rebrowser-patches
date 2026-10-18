@@ -22,6 +22,8 @@ python target <pyVersion> (e.g. 1.64.0):
   5. assert the exact wheel set, and per wheel: driver/package/lib/coreBundle.js is byte-identical to
      the tarball's, driver package.json version == DRIVER_VERSION, renamed package, metadata
 Wheels and python-manifest.json go to --out (default <work>/dist). The build venv lives in <work>/py/venv-build.
+If the python target has a "publishVersion" (re-release of the same upstream tag, X.Y.100+n), the wheels are
+versioned with it; the tag, build.patch and work paths stay keyed by <pyVersion>.
 --smoke: also pip-install the wheel for this machine into a fresh venv and import rebrowser_playwright.`;
 
 const { values: opt, positionals } = parse({
@@ -68,7 +70,7 @@ function prepareSources(clone) {
       changed++;
     }
   }
-  fs.writeFileSync(path.join(to, '_repo_version.py'), `version = "${pyVersion}"\n`);
+  fs.writeFileSync(path.join(to, '_repo_version.py'), `version = "${wheelVersion}"\n`);
   log(`rewrote imports in ${changed} python files`);
 }
 
@@ -79,9 +81,17 @@ const hostWheelPart = () => {
   return null;
 };
 
+let wheelVersion = pyVersion;
+
 main(async () => {
   const entry = loadVersions().python.find((p) => p.version === pyVersion);
   if (!entry) throw new Error(`python ${pyVersion} is not listed in release/versions.json`);
+  if (entry.publishVersion && entry.publishVersion !== pyVersion) {
+    const [maj, min] = pyVersion.split('.');
+    const m = /^(\d+)\.(\d+)\.(\d+)$/.exec(entry.publishVersion);
+    if (!m || m[1] !== maj || m[2] !== min || Number(m[3]) < 100) throw new Error(`python ${pyVersion}: publishVersion ${entry.publishVersion} must be ${maj}.${min}.<100 or more>`);
+    wheelVersion = entry.publishVersion;
+  }
   const driverTgz = path.resolve(opt['driver-tgz']);
   if (!exists(driverTgz)) throw new Error(`--driver-tgz ${driverTgz} does not exist`);
   const buildPatch = repoPath('patches', 'playwright-python', pyVersion, 'build.patch');
@@ -111,6 +121,15 @@ main(async () => {
   }
 
   await step('apply build.patch', () => run('git', ['apply', '--whitespace=nowarn', buildPatch], { cwd: clone, logFile, echo: false }));
+  if (wheelVersion !== pyVersion) {
+    // re-release: build.patch pins the upstream version in pyproject.toml; publish under wheelVersion instead
+    const pyproject = path.join(clone, 'pyproject.toml');
+    const text = fs.readFileSync(pyproject, 'utf8');
+    const pin = `version = "${pyVersion}"`;
+    if (text.split(pin).length !== 2) throw new Error(`pyproject.toml should contain exactly one ${pin} after build.patch`);
+    fs.writeFileSync(pyproject, text.replace(pin, `version = "${wheelVersion}"`));
+    log(`re-release: wheels are versioned ${wheelVersion} (upstream ${pyVersion})`);
+  }
   await step('prepare rebrowser_playwright sources', async () => prepareSources(clone));
 
   await step('build venv', async () => {
@@ -122,7 +141,7 @@ main(async () => {
 
   const wheelList = (await capture(py, ['setup.py', '--list-wheels'], { cwd: clone })).split('\n').filter(Boolean);
   if (wheelList.length === 0) throw new Error('setup.py --list-wheels printed nothing');
-  const expected = wheelList.map((w) => `rebrowser_playwright-${pyVersion}-py3-none-${w}`).sort();
+  const expected = wheelList.map((w) => `rebrowser_playwright-${wheelVersion}-py3-none-${w}`).sort();
   log(`building ${wheelList.length} wheels: ${wheelList.join(', ')}`);
 
   const dist = path.join(clone, 'dist');
@@ -156,7 +175,7 @@ main(async () => {
   const coreBundle = path.join(tmpExtract, 'package', 'lib', 'coreBundle.js');
   const reports = [];
   for (const file of built) {
-    const { stdout } = await run('python3', [repoPath('release', 'lib', 'check_wheel.py'), path.join(dist, file), coreBundle, driverVersion, pyVersion], {
+    const { stdout } = await run('python3', [repoPath('release', 'lib', 'check_wheel.py'), path.join(dist, file), coreBundle, driverVersion, wheelVersion], {
       capture: true,
       echo: false,
     });
@@ -173,7 +192,7 @@ main(async () => {
   }
   const manifest = {
     distribution: entry.distribution,
-    version: pyVersion,
+    version: wheelVersion,
     source: { repo: entry.repo, ref: entry.ref },
     driver: { package: 'rebrowser-playwright-core', version: driverVersion, tgzIntegrity: integrityOfFile(driverTgz) },
     buildPatch: { path: path.relative(repoPath(), buildPatch), sha256: sha256OfFile(buildPatch) },
@@ -194,5 +213,5 @@ main(async () => {
     });
   }
 
-  log(`build-python: ${built.length} wheels for rebrowser-playwright ${pyVersion} (driver ${driverVersion}) in ${outDir}`);
+  log(`build-python: ${built.length} wheels for rebrowser-playwright ${wheelVersion} (driver ${driverVersion}) in ${outDir}`);
 });

@@ -68,6 +68,18 @@ Install from npm and PyPI into clean dirs and re-run `tests/run.mjs` against the
 Update the README supported-versions table (in the PR), list the issues this release fixes, and flag the
 rebrowser.net docs page if its versions changed (that's a separate deploy).
 
+## Re-release (same upstream version, urgent fixes only)
+npm and PyPI never accept the same version twice, so a fix to an already published upstream version ships as
+`X.Y.100+n` (25.14.100, then 25.14.101, ...). Set `"publishVersion"` on the target (and on the python entry) in
+`release/versions.json`, bump `cliVersion` and the root `package.json`. Then follow steps 3–7 as usual.
+- `build-packages.mjs` / `build-python.mjs` take the patches, the upstream tarballs and the git refs from `version`.
+  They give the built packages, tarball and wheel names `publishVersion`, and the wrapper pins the core to it.
+- `ci-env.mjs` exports `*_VERSION` (published) and `*_UPSTREAM` (upstream). The test runs need
+  `--pptr-upstream/--pw-upstream/--py-upstream` set to the upstream versions, because the unpatched controls
+  come from npm/PyPI.
+- After that, the `X.Y` line is closed. `check-upstream.mjs` reports later upstream `X.Y.z` releases as "skip"
+  (publishing one would move `latest` backwards); port the next minor instead.
+
 ## Rollback (rare)
 - npm: run `release.yml` manually with action=rollback, a package and the previous version — it moves
   `latest` back via OIDC. It never unpublishes; `npm deprecate` of a bad version is done by hand (2FA).

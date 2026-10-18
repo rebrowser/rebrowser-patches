@@ -1,12 +1,13 @@
 {
-  "cliVersion": "1.1.0",
+  "cliVersion": "1.1.1",
   "targets": [
     {
       "package": "puppeteer-core",
       "version": "25.14.0",
+      "publishVersion": "25.14.100",
       "repo": "puppeteer/puppeteer",
       "ref": "puppeteer-v25.14.0",
-      "previous": "24.8.1",
+      "previous": "25.14.0",
       "role": "release",
       "wrapper": "puppeteer",
       "publish": true,
@@ -15,9 +16,10 @@
     {
       "package": "playwright-core",
       "version": "1.64.1",
+      "publishVersion": "1.64.100",
       "repo": "microsoft/playwright",
       "ref": "v1.64.1",
-      "previous": "1.52.0",
+      "previous": "1.64.1",
       "role": "release",
       "wrapper": "playwright",
       "publish": true,
@@ -37,15 +39,50 @@
     {
       "package": "playwright-python",
       "version": "1.64.0",
+      "publishVersion": "1.64.100",
       "repo": "microsoft/playwright-python",
       "ref": "v1.64.0",
-      "previous": "1.52.0",
+      "previous": "1.64.0",
       "distribution": "rebrowser-playwright",
       "module": "rebrowser_playwright",
       "driver": { "package": "playwright-core", "version": "1.64.0-beta-1791568591000" }
     }
   ],
   "released": [
+    {
+      "package": "puppeteer-core",
+      "version": "25.14.0",
+      "repo": "puppeteer/puppeteer",
+      "ref": "puppeteer-v25.14.0",
+      "wrapper": "puppeteer",
+      "npm": { "rebrowser-puppeteer-core": "25.14.0", "rebrowser-puppeteer": "25.14.0" },
+      "date": "2026-10-17"
+    },
+    {
+      "package": "playwright-core",
+      "version": "1.64.1",
+      "repo": "microsoft/playwright",
+      "ref": "v1.64.1",
+      "wrapper": "playwright",
+      "npm": { "rebrowser-playwright-core": "1.64.1", "rebrowser-playwright": "1.64.1" },
+      "date": "2026-10-17"
+    },
+    {
+      "package": "playwright-python",
+      "version": "1.64.0",
+      "repo": "microsoft/playwright-python",
+      "ref": "v1.64.0",
+      "driver": { "package": "playwright-core", "version": "1.64.0-beta-1791568591000" },
+      "pypi": { "rebrowser-playwright": "1.64.0" },
+      "date": "2026-10-17"
+    },
+    {
+      "package": "rebrowser-patches",
+      "version": "1.1.0",
+      "ref": "v1.1.0",
+      "npm": { "rebrowser-patches": "1.1.0" },
+      "date": "2026-10-17"
+    },
     {
       "package": "puppeteer-core",
       "version": "24.8.1",
