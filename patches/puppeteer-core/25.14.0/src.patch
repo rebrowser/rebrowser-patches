@@ -1,18 +1,19 @@
 diff --git a/src/cdp/ExecutionContext.ts b/src/cdp/ExecutionContext.ts
-index 8d6da1e..e7f6143 100644
+index 8d6da1e..644490e 100644
 --- a/src/cdp/ExecutionContext.ts
 +++ b/src/cdp/ExecutionContext.ts
-@@ -39,6 +39,9 @@ import {
+@@ -39,6 +39,10 @@ import {
    valueFromPrimitiveRemoteObject,
  } from './utils.js';
  
 +// rebrowser-patches: isolated world used to look up main-world context ids; one random name per process
 +const rebrowserLookupWorldName = [...Array(Math.floor(Math.random() * (10 + 1)) + 10)].map(() => Math.random().toString(36)[2]).join('');
++let rebrowserFallbackWarned = false;
 +
  /**
   * @internal
   */
-@@ -86,6 +89,7 @@ export class ExecutionContext
+@@ -86,6 +90,7 @@ export class ExecutionContext
    #client: CDPSession;
    #world: IsolatedWorld;
    #id: number;
@@ -20,7 +21,7 @@ index 8d6da1e..e7f6143 100644
    #name?: string;
  
    readonly #disposables = new DisposableStack();
-@@ -105,16 +109,22 @@ export class ExecutionContext
+@@ -105,16 +110,22 @@ export class ExecutionContext
      if (contextPayload.name) {
        this.#name = contextPayload.name;
      }
@@ -50,7 +51,7 @@ index 8d6da1e..e7f6143 100644
      clientEmitter.on('Runtime.consoleAPICalled', this.#onConsoleAPI.bind(this));
      clientEmitter.on(CDPSessionEvent.Disconnected, () => {
        this[disposeSymbol]();
-@@ -177,7 +187,23 @@ export class ExecutionContext
+@@ -177,7 +188,23 @@ export class ExecutionContext
      event: Protocol.Runtime.BindingCalledEvent,
    ): Promise<void> {
      if (event.executionContextId !== this.#id) {
@@ -75,7 +76,7 @@ index 8d6da1e..e7f6143 100644
      }
  
      let payload: BindingPayload;
-@@ -369,6 +395,229 @@ export class ExecutionContext
+@@ -369,6 +396,233 @@ export class ExecutionContext
      return await this.#evaluate(false, pageFunction, ...args);
    }
  
@@ -96,6 +97,10 @@ index 8d6da1e..e7f6143 100644
 +        return contextId;
 +    } catch (error) {
 +      process.env['REBROWSER_PATCHES_DEBUG'] && console.log('[rebrowser-patches][getMainWorld] object lookup failed, using a binding:', error);
++    }
++    if (!rebrowserFallbackWarned) {
++      rebrowserFallbackWarned = true;
++      console.warn('[rebrowser-patches] could not look up the page\'s context id without touching the page; falling back to a binding handshake that page scripts can notice. Please report this with your Chrome version. REBROWSER_PATCHES_RUNTIME_FIX_MODE=alwaysIsolated avoids it.');
 +    }
 +    return this.__re__getMainWorldByBinding({ client, frameId, isWorker });
 +  }
@@ -305,7 +310,7 @@ index 8d6da1e..e7f6143 100644
    async #evaluate<
      Params extends unknown[],
      Func extends EvaluateFunc<Params> = EvaluateFunc<Params>,
-@@ -393,6 +642,13 @@ export class ExecutionContext
+@@ -393,6 +647,13 @@ export class ExecutionContext
      pageFunction: Func | string,
      ...args: Params
    ): Promise<HandleFor<Awaited<ReturnType<Func>>> | Awaited<ReturnType<Func>>> {
@@ -625,7 +630,7 @@ index f7dc289..28a8b11 100644
        return new Promise((resolve, reject) => {
          callPuppeteer.callbacks.set(seq, {
 diff --git a/src/common/util.ts b/src/common/util.ts
-index 1ddc8f5..77161b5 100644
+index 1ddc8f5..7f63437 100644
 --- a/src/common/util.ts
 +++ b/src/common/util.ts
 @@ -292,7 +292,9 @@ export function timeout(ms: number, cause?: Error): Observable<never> {
@@ -639,17 +644,22 @@ index 1ddc8f5..77161b5 100644
  
  /**
   * @internal
-@@ -303,6 +305,10 @@ export const SOURCE_URL_REGEX =
+@@ -303,7 +305,14 @@ export const SOURCE_URL_REGEX =
   * @internal
   */
  export function getSourceUrlComment(url: string): string {
-+  // rebrowser-patches: change sourceUrl to generic script name
-+  if (process.env['REBROWSER_PATCHES_SOURCE_URL'] !== '0') {
-+    url = process.env['REBROWSER_PATCHES_SOURCE_URL'] || 'app.js'
+-  return `//# sourceURL=${url}`;
++  // rebrowser-patches: by default add no sourceURL, so stack frames of evaluated code are plain "<anonymous>" like any
++  // injected script (Puppeteer's "pptr:" URLs, or any fixed replacement name, would identify the library).
++  // REBROWSER_PATCHES_SOURCE_URL=<name> uses that name instead, REBROWSER_PATCHES_SOURCE_URL=0 keeps "pptr:" URLs.
++  const sourceUrl = process.env['REBROWSER_PATCHES_SOURCE_URL'];
++  if (sourceUrl === '0') {
++    return `//# sourceURL=${url}`;
 +  }
-   return `//# sourceURL=${url}`;
++  return sourceUrl ? `//# sourceURL=${sourceUrl}` : '';
  }
  
+ /**
 diff --git a/src/node/ChromeLauncher.ts b/src/node/ChromeLauncher.ts
 index d10991a..db3e802 100644
 --- a/src/node/ChromeLauncher.ts

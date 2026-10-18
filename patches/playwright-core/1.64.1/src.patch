@@ -19,20 +19,21 @@ index 222fb07..33323dc 100644
      return chromeArguments;
    }
 diff --git a/src/server/chromium/crConnection.ts b/src/server/chromium/crConnection.ts
-index bdf9ab8..d89e132 100644
+index bdf9ab8..ff4f74d 100644
 --- a/src/server/chromium/crConnection.ts
 +++ b/src/server/chromium/crConnection.ts
-@@ -106,6 +106,9 @@ export class CRConnection extends SdkObject {
+@@ -106,6 +106,10 @@ export class CRConnection extends SdkObject {
  
  type SessionEventListener = (method: string, params?: Object) => void;
  
 +// rebrowser-patches: isolated world used to look up main-world context ids; one random name per process
 +const rebrowserLookupWorldName = [...Array(Math.floor(Math.random() * (10 + 1)) + 10)].map(() => Math.random().toString(36)[2]).join('');
++let rebrowserFallbackWarned = false;
 +
  export class CRSession extends SdkObject<Protocol.EventMap & ConnectionEventMap> {
    private readonly _connection: CRConnection;
    private _eventListener?: SessionEventListener;
-@@ -209,6 +212,157 @@ export class CRSession extends SdkObject<Protocol.EventMap & ConnectionEventMap>
+@@ -209,6 +213,161 @@ export class CRSession extends SdkObject<Protocol.EventMap & ConnectionEventMap>
      }
      this._callbacks.clear();
    }
@@ -78,6 +79,10 @@ index bdf9ab8..d89e132 100644
 +        return contextId;
 +    } catch (error) {
 +      process.env['REBROWSER_PATCHES_DEBUG'] && console.log('[rebrowser-patches][getMainWorld] object lookup failed, using a binding:', error);
++    }
++    if (!rebrowserFallbackWarned) {
++      rebrowserFallbackWarned = true;
++      console.warn('[rebrowser-patches] could not look up the page\'s context id without touching the page; falling back to a binding handshake that page scripts can notice. Please report this with your Chrome version. REBROWSER_PATCHES_RUNTIME_FIX_MODE=alwaysIsolated avoids it.');
 +    }
 +    return this.__re__getMainWorldByBinding({ client, frameId, isWorker });
 +  }
@@ -430,17 +435,19 @@ index d9080e4..66b8905 100644
        this._page.frameManager._consoleMessageTags.set(tag, () => {
          // Clear lifecycle right after document.open() - see 'tag' below.
 diff --git a/src/server/javascript.ts b/src/server/javascript.ts
-index adaae31..453d6dc 100644
+index adaae31..0579677 100644
 --- a/src/server/javascript.ts
 +++ b/src/server/javascript.ts
-@@ -55,6 +55,33 @@ export interface ExecutionContextDelegate {
+@@ -55,6 +55,35 @@ export interface ExecutionContextDelegate {
    shouldPrependErrorPrefix(): boolean;
  }
  
 +// rebrowser-patches: V8 names stack frames after the class binding, so a page calling `new Error().stack` from
 +// inside an evaluate() sees "UtilityScript.evaluate". Rename the binding to a short name picked at random once per
-+// process (a fixed name would itself identify the patch). REBROWSER_PATCHES_SOURCE_URL=0 keeps the original source.
++// process, and shift the script down by a random number of lines, so the frames carry no fixed name or position that
++// would identify the patch. REBROWSER_PATCHES_SOURCE_URL=0 keeps the original source.
 +let rebrowserUtilityScriptName: string | undefined;
++const rebrowserUtilityScriptOffset = '\n'.repeat(Math.floor(Math.random() * 100));
 +function utilityScriptSource(): string {
 +  const source = rawUtilityScriptSource.source;
 +  if (process.env['REBROWSER_PATCHES_SOURCE_URL'] === '0')
@@ -461,13 +468,13 @@ index adaae31..453d6dc 100644
 +      .replace('var UtilityScript = class {', () => `var ${name} = class {`)
 +      .replace('UtilityScript: () => UtilityScript', () => `UtilityScript: () => ${name}`);
 +  // if upstream changes the generated shape, keep it working rather than half-renamed
-+  return name && renamed.includes(`var ${name} = class {`) && renamed.includes(`UtilityScript: () => ${name}`) ? renamed : source;
++  return name && renamed.includes(`var ${name} = class {`) && renamed.includes(`UtilityScript: () => ${name}`) ? rebrowserUtilityScriptOffset + renamed : source;
 +}
 +
  export class ExecutionContext extends SdkObject {
    readonly delegate: ExecutionContextDelegate;
    private _utilityScriptPromise: Promise<JSHandle> | undefined;
-@@ -109,7 +136,7 @@ export class ExecutionContext extends SdkObject {
+@@ -109,7 +138,7 @@ export class ExecutionContext extends SdkObject {
        (() => {
          ${globalsSnapshot}
          const module = {};

@@ -11,18 +11,23 @@
    /**
     * @internal
     */
-@@ -3611,6 +3613,10 @@
+@@ -3611,7 +3613,14 @@
     * @internal
     */
    function getSourceUrlComment(url) {
-+    // rebrowser-patches: change sourceUrl to generic script name
-+    if (process.env['REBROWSER_PATCHES_SOURCE_URL'] !== '0') {
-+      url = process.env['REBROWSER_PATCHES_SOURCE_URL'] || 'app.js';
+-    return `//# sourceURL=${url}`;
++    // rebrowser-patches: by default add no sourceURL, so stack frames of evaluated code are plain "<anonymous>" like any
++    // injected script (Puppeteer's "pptr:" URLs, or any fixed replacement name, would identify the library).
++    // REBROWSER_PATCHES_SOURCE_URL=<name> uses that name instead, REBROWSER_PATCHES_SOURCE_URL=0 keeps "pptr:" URLs.
++    const sourceUrl = process.env['REBROWSER_PATCHES_SOURCE_URL'];
++    if (sourceUrl === '0') {
++      return `//# sourceURL=${url}`;
 +    }
-     return `//# sourceURL=${url}`;
++    return sourceUrl ? `//# sourceURL=${sourceUrl}` : '';
    }
    /**
-@@ -16027,6 +16033,9 @@
+    * @internal
+@@ -16027,6 +16036,9 @@
    /**
     * @internal
     */
@@ -32,7 +37,7 @@
    function addPageBinding(type, name, prefix) {
      // Depending on the frame loading state either Runtime.evaluate or
      // Page.addScriptToEvaluateOnNewDocument might succeed. Let's check that we
-@@ -16046,9 +16055,7 @@
+@@ -16046,9 +16058,7 @@
          const seq = (callPuppeteer.lastSeq ?? 0) + 1;
          callPuppeteer.lastSeq = seq;
          callPuppeteer.args.set(seq, args);
@@ -43,7 +48,7 @@
            type,
            name,
            seq,
-@@ -16056,7 +16063,22 @@
+@@ -16056,7 +16066,22 @@
            isTrivial: !args.some(value => {
              return value instanceof Node;
            })
@@ -67,7 +72,7 @@
          return new Promise((resolve, reject) => {
            callPuppeteer.callbacks.set(seq, {
              resolve(value) {
-@@ -16465,26 +16487,6 @@
+@@ -16465,26 +16490,6 @@
  
    /**
     * @license
@@ -94,16 +99,17 @@
     * Copyright 2017 Google Inc.
     * SPDX-License-Identifier: Apache-2.0
     */
-@@ -16553,6 +16555,8 @@
+@@ -16553,6 +16558,9 @@
      var e = new Error(message);
      return e.name = "SuppressedError", e.error = error, e.suppressed = suppressed, e;
    });
 +  // rebrowser-patches: isolated world used to look up main-world context ids; one random name per process
 +  const rebrowserLookupWorldName = [...Array(Math.floor(Math.random() * (10 + 1)) + 10)].map(() => Math.random().toString(36)[2]).join('');
++  let rebrowserFallbackWarned = false;
    /**
     * @internal
     */
-@@ -16589,6 +16593,7 @@
+@@ -16589,6 +16597,7 @@
        _classPrivateFieldInitSpec(this, _client6, void 0);
        _classPrivateFieldInitSpec(this, _world3, void 0);
        _classPrivateFieldInitSpec(this, _id4, void 0);
@@ -111,7 +117,7 @@
        _classPrivateFieldInitSpec(this, _name4, void 0);
        _classPrivateFieldInitSpec(this, _disposables, new DisposableStack());
        _classPrivateFieldInitSpec(this, _logger13, void 0);
-@@ -16606,16 +16611,22 @@
+@@ -16606,16 +16615,22 @@
        if (contextPayload.name) {
          _classPrivateFieldSet(_name4, this, contextPayload.name);
        }
@@ -141,7 +147,7 @@
        clientEmitter.on('Runtime.consoleAPICalled', _assertClassBrand(_ExecutionContext_brand, this, _onConsoleAPI).bind(this));
        clientEmitter.on(exports.CDPSessionEvent.Disconnected, () => {
          this[disposeSymbol]();
-@@ -16740,6 +16751,270 @@
+@@ -16740,6 +16755,274 @@
      async evaluateHandle(pageFunction, ...args) {
        return await _assertClassBrand(_ExecutionContext_brand, this, _evaluate).call(this, false, pageFunction, ...args);
      }
@@ -169,6 +175,10 @@
 +        if (contextId) return contextId;
 +      } catch (error) {
 +        process.env['REBROWSER_PATCHES_DEBUG'] && console.log('[rebrowser-patches][getMainWorld] object lookup failed, using a binding:', error);
++      }
++      if (!rebrowserFallbackWarned) {
++        rebrowserFallbackWarned = true;
++        console.warn('[rebrowser-patches] could not look up the page\'s context id without touching the page; falling back to a binding handshake that page scripts can notice. Please report this with your Chrome version. REBROWSER_PATCHES_RUNTIME_FIX_MODE=alwaysIsolated avoids it.');
 +      }
 +      return this.__re__getMainWorldByBinding({
 +        client,
@@ -412,7 +422,7 @@
      [disposeSymbol]() {
        _classPrivateFieldGet(_disposables, this).dispose();
        this.emit('disposed', undefined);
-@@ -16792,7 +17067,19 @@
+@@ -16792,7 +17075,19 @@
    }
    async function _onBindingCalled(event) {
      if (event.executionContextId !== _classPrivateFieldGet(_id4, this)) {
@@ -433,7 +443,7 @@
      }
      let payload;
      try {
-@@ -16840,6 +17127,12 @@
+@@ -16840,6 +17135,12 @@
      }
    }
    async function _evaluate(returnByValue, pageFunction, ...args) {
@@ -446,7 +456,7 @@
      const sourceUrlComment = getSourceUrlComment(getSourcePuppeteerURLIfAvailable(pageFunction)?.toString() ?? PuppeteerURL.INTERNAL_URL);
      if (isString(pageFunction)) {
        const contextId = _classPrivateFieldGet(_id4, this);
-@@ -16987,6 +17280,26 @@
+@@ -16987,6 +17288,26 @@
    };
  
    /**
@@ -473,7 +483,7 @@
     * @internal
     */
    var _world4 = /*#__PURE__*/new WeakMap();
-@@ -17016,6 +17329,10 @@
+@@ -17016,6 +17337,10 @@
        _classPrivateFieldSet(_world4, this, new IsolatedWorld(this, new TimeoutSettings(), MAIN_WORLD, logger));
        _classPrivateFieldSet(_emitter2, this, new EventEmitter(undefined, logger));
        _classPrivateFieldGet(_client7, this).once('Runtime.executionContextCreated', async event => {
@@ -484,7 +494,7 @@
          _classPrivateFieldGet(_world4, this).setContext(new ExecutionContext(client, event.context, _classPrivateFieldGet(_world4, this), logger));
        });
        _classPrivateFieldGet(_client7, this).once('Inspector.workerScriptLoaded', () => {
-@@ -17058,9 +17375,23 @@
+@@ -17058,9 +17383,23 @@
        networkManager?.addClient(_classPrivateFieldGet(_client7, this)).catch(err => {
          return _classPrivateFieldGet(_logger14, this)?.call(this, DEBUG_PREFIXES.error)?.(err);
        });
@@ -511,7 +521,7 @@
      }
      mainRealm() {
        return _classPrivateFieldGet(_world4, this);
-@@ -17108,6 +17439,7 @@
+@@ -17108,6 +17447,7 @@
      }
    }
  
@@ -519,7 +529,7 @@
    /**
     * @license
     * Copyright 2019 Google Inc.
-@@ -17191,6 +17523,8 @@
+@@ -17191,6 +17531,8 @@
        if (!context) {
          context = await _assertClassBrand(_IsolatedWorld_brand, this, _waitForExecutionContext).call(this);
        }
@@ -528,7 +538,7 @@
        const {
          object
        } = await this.client.send('DOM.resolveNode', {
-@@ -17293,6 +17627,23 @@
+@@ -17293,6 +17635,23 @@
     * Waits for the next context to be set on the isolated world.
     */
    async function _waitForExecutionContext() {
@@ -552,7 +562,7 @@
      const error = new Error('Execution context was destroyed');
      const result = await firstValueFrom(fromEmitterEvent(_classPrivateFieldGet(_emitter3, this), 'context').pipe(raceWith(fromEmitterEvent(_classPrivateFieldGet(_emitter3, this), 'disposed').pipe(map(() => {
        // The message has to match the CDP message expected by the WaitTask class.
-@@ -19621,6 +19972,10 @@
+@@ -19621,6 +19980,10 @@
          _assertClassBrand(_FrameManager_brand, this, _onFrameStoppedLoading).call(this, event.frameId);
        });
        session.on('Runtime.executionContextCreated', async event => {
@@ -563,7 +573,7 @@
          await _classPrivateFieldGet(_frameTreeHandled, this)?.valueOrThrow();
          _assertClassBrand(_FrameManager_brand, this, _onExecutionContextCreated).call(this, event.context, session);
        });
-@@ -19647,13 +20002,39 @@
+@@ -19647,13 +20010,39 @@
            _classPrivateFieldGet(_frameTreeHandled, this)?.resolve();
          }), client.send('Page.setLifecycleEventsEnabled', {
            enabled: true
@@ -606,7 +616,7 @@
        } catch (error) {
          _classPrivateFieldGet(_frameTreeHandled, this)?.resolve();
          // The target might have been closed before the initialization finished.
-@@ -19891,6 +20272,37 @@
+@@ -19891,6 +20280,37 @@
        }
        this._frameTree.addFrame(frame);
      }
@@ -644,7 +654,7 @@
      frame = await this._frameTree.waitForFrame(frameId);
      frame._navigated(framePayload);
      this.emit(exports.FrameManagerEvent.FrameNavigated, frame);
-@@ -19914,6 +20326,23 @@
+@@ -19914,6 +20334,23 @@
          frameId: frame._id,
          worldName: name,
          grantUniveralAccess: true
@@ -694,16 +704,17 @@
 \ No newline at end of file
 --- a/lib/puppeteer/cdp/ExecutionContext.js
 +++ b/lib/puppeteer/cdp/ExecutionContext.js
-@@ -70,6 +70,8 @@
+@@ -70,6 +70,9 @@
  import { CdpElementHandle } from './ElementHandle.js';
  import { CdpJSHandle } from './JSHandle.js';
  import { addPageBinding, CDP_BINDING_PREFIX, createEvaluationError, valueFromPrimitiveRemoteObject, } from './utils.js';
 +// rebrowser-patches: isolated world used to look up main-world context ids; one random name per process
 +const rebrowserLookupWorldName = [...Array(Math.floor(Math.random() * (10 + 1)) + 10)].map(() => Math.random().toString(36)[2]).join('');
++let rebrowserFallbackWarned = false;
  /**
   * @internal
   */
-@@ -92,6 +94,7 @@
+@@ -92,6 +95,7 @@
      #client;
      #world;
      #id;
@@ -711,7 +722,7 @@
      #name;
      #disposables = new DisposableStack();
      #logger;
-@@ -104,16 +107,22 @@
+@@ -104,16 +108,22 @@
          if (contextPayload.name) {
              this.#name = contextPayload.name;
          }
@@ -741,7 +752,7 @@
          clientEmitter.on('Runtime.consoleAPICalled', this.#onConsoleAPI.bind(this));
          clientEmitter.on(CDPSessionEvent.Disconnected, () => {
              this[disposeSymbol]();
-@@ -171,7 +180,22 @@
+@@ -171,7 +181,22 @@
      }
      async #onBindingCalled(event) {
          if (event.executionContextId !== this.#id) {
@@ -765,7 +776,7 @@
          }
          let payload;
          try {
-@@ -339,7 +363,227 @@
+@@ -339,7 +364,231 @@
      async evaluateHandle(pageFunction, ...args) {
          return await this.#evaluate(false, pageFunction, ...args);
      }
@@ -787,6 +798,10 @@
 +        }
 +        catch (error) {
 +            process.env['REBROWSER_PATCHES_DEBUG'] && console.log('[rebrowser-patches][getMainWorld] object lookup failed, using a binding:', error);
++        }
++        if (!rebrowserFallbackWarned) {
++            rebrowserFallbackWarned = true;
++            console.warn('[rebrowser-patches] could not look up the page\'s context id without touching the page; falling back to a binding handshake that page scripts can notice. Please report this with your Chrome version. REBROWSER_PATCHES_RUNTIME_FIX_MODE=alwaysIsolated avoids it.');
 +        }
 +        return this.__re__getMainWorldByBinding({ client, frameId, isWorker });
 +    }
@@ -1299,17 +1314,22 @@
  /**
   * @internal
   */
-@@ -233,6 +236,10 @@
+@@ -233,7 +236,14 @@
   * @internal
   */
  export function getSourceUrlComment(url) {
-+    // rebrowser-patches: change sourceUrl to generic script name
-+    if (process.env['REBROWSER_PATCHES_SOURCE_URL'] !== '0') {
-+        url = process.env['REBROWSER_PATCHES_SOURCE_URL'] || 'app.js';
+-    return `//# sourceURL=${url}`;
++    // rebrowser-patches: by default add no sourceURL, so stack frames of evaluated code are plain "<anonymous>" like any
++    // injected script (Puppeteer's "pptr:" URLs, or any fixed replacement name, would identify the library).
++    // REBROWSER_PATCHES_SOURCE_URL=<name> uses that name instead, REBROWSER_PATCHES_SOURCE_URL=0 keeps "pptr:" URLs.
++    const sourceUrl = process.env['REBROWSER_PATCHES_SOURCE_URL'];
++    if (sourceUrl === '0') {
++        return `//# sourceURL=${url}`;
 +    }
-     return `//# sourceURL=${url}`;
++    return sourceUrl ? `//# sourceURL=${sourceUrl}` : '';
  }
  /**
+  * @internal
 --- a/lib/puppeteer/node/ChromeLauncher.js
 +++ b/lib/puppeteer/node/ChromeLauncher.js
 @@ -117,6 +117,19 @@

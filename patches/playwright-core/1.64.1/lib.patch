@@ -20,7 +20,7 @@
 +  }
 +  const name = rebrowserUtilityScriptName;
 +  const renamed = source14.replace("var UtilityScript = class {", () => `var ${name} = class {`).replace("UtilityScript: () => UtilityScript", () => `UtilityScript: () => ${name}`);
-+  return name && renamed.includes(`var ${name} = class {`) && renamed.includes(`UtilityScript: () => ${name}`) ? renamed : source14;
++  return name && renamed.includes(`var ${name} = class {`) && renamed.includes(`UtilityScript: () => ${name}`) ? rebrowserUtilityScriptOffset + renamed : source14;
 +}
  async function evaluate(context, returnByValue, pageFunction, ...args) {
    return evaluateExpression(context, String(pageFunction), { returnByValue, isFunction: typeof pageFunction === "function" }, ...args);
@@ -30,11 +30,19 @@
    return "[" + tokens.join(", ") + "]";
  }
 -var ExecutionContext, JSHandle, JavaScriptErrorInEvaluate, snapshottedFunctionBuiltins, snapshottedObjectBuiltins, snapshottedTimerBuiltins, saveGlobalsSnapshotSource, mainWorldGlobalsSnapshotSource;
-+var rebrowserUtilityScriptName, ExecutionContext, JSHandle, JavaScriptErrorInEvaluate, snapshottedFunctionBuiltins, snapshottedObjectBuiltins, snapshottedTimerBuiltins, saveGlobalsSnapshotSource, mainWorldGlobalsSnapshotSource;
++var rebrowserUtilityScriptName, rebrowserUtilityScriptOffset, ExecutionContext, JSHandle, JavaScriptErrorInEvaluate, snapshottedFunctionBuiltins, snapshottedObjectBuiltins, snapshottedTimerBuiltins, saveGlobalsSnapshotSource, mainWorldGlobalsSnapshotSource;
  var init_javascript = __esm({
    "packages/playwright-core/src/server/javascript.ts"() {
      "use strict";
-@@ -20730,7 +20748,7 @@
+@@ -20690,6 +20708,7 @@
+     init_debug();
+     init_instrumentation();
+     init_utilityScriptSource();
++    rebrowserUtilityScriptOffset = "\n".repeat(Math.floor(Math.random() * 100));
+     ExecutionContext = class extends SdkObject {
+       constructor(parent, delegate, worldNameForTest, options) {
+         super(parent, "execution-context");
+@@ -20730,7 +20749,7 @@
        (() => {
          ${globalsSnapshot}
          const module = {};
@@ -43,7 +51,7 @@
          return new (module.exports.UtilityScript())(globalThis, ${isUnderTest()});
        })();`;
            this._utilityScriptPromise = this.raceAgainstContextDestroyed(this.delegate.rawEvaluateHandle(this, source14)).then((handle) => {
-@@ -23407,6 +23425,27 @@
+@@ -23407,6 +23426,27 @@
  });
  
  // packages/playwright-core/src/server/page.ts
@@ -71,7 +79,7 @@
  async function ariaSnapshotJSONForFrame(progress2, frame, selector, options = {}) {
    const snapshot3 = await frame.retryWithProgressAndTimeouts(progress2, [1e3, 2e3, 4e3, 8e3], async (progress3, continuePolling) => {
      try {
-@@ -24213,11 +24252,21 @@
+@@ -24213,11 +24253,21 @@
          this.emit(_Worker.Events.Close, this);
          this.openScope.close(new Error("Worker closed"));
        }
@@ -95,7 +103,7 @@
        }
        async disconnect(progress2, options = {}) {
          if (!this._onDisconnect)
-@@ -24234,7 +24283,7 @@
+@@ -24234,7 +24284,7 @@
          return new InitScript(browserContext, `
        (() => {
          const module = {};
@@ -104,7 +112,7 @@
          const property = '${kBindingsControllerProperty}';
          if (!globalThis[property])
            globalThis[property] = new (module.exports.BindingsController())(globalThis, '${_PageBinding.kBindingName}');
-@@ -24249,6 +24298,9 @@
+@@ -24249,6 +24299,9 @@
          this.cleanupScript = `globalThis['${kBindingsControllerProperty}'].removeBinding(${JSON.stringify(name)})`;
        }
        static async dispatch(page, payload, context) {
@@ -114,7 +122,7 @@
          const { name, seq, serializedArgs } = JSON.parse(payload);
          try {
            assert(context.world);
-@@ -24538,6 +24590,12 @@
+@@ -24538,6 +24591,12 @@
          } else {
            frame._currentDocument = { documentId, request: void 0 };
          }
@@ -127,7 +135,7 @@
          frame._onClearLifecycle();
          const navigationEvent = { url: url3, name, newDocument: frame._currentDocument, isPublic: true };
          this._fireInternalFrameNavigation(frame, navigationEvent);
-@@ -24751,6 +24809,8 @@
+@@ -24751,6 +24810,8 @@
          this._firedNetworkIdleSelf = false;
          this._url = "";
          this._contextData = /* @__PURE__ */ new Map();
@@ -136,7 +144,7 @@
          this._childFrames = /* @__PURE__ */ new Set();
          this._name = "";
          this._inflightRequests = /* @__PURE__ */ new Set();
-@@ -24972,14 +25032,46 @@
+@@ -24972,14 +25033,46 @@
        async frameElement(progress2) {
          return await progress2.race(this._page.delegate.getFrameElement(this));
        }
@@ -189,7 +197,7 @@
        }
        mainContext() {
          return this.context("main");
-@@ -25129,6 +25221,32 @@
+@@ -25129,6 +25222,32 @@
            const waitUntil = options.waitUntil === void 0 ? "load" : options.waitUntil;
            progress2.log(`setting frame content, waiting until "${waitUntil}"`);
            const context = await progress2.race(this.utilityContext());
@@ -222,24 +230,25 @@
            const tagPromise = new ManualPromise();
            this._page.frameManager._consoleMessageTags.set(tag, () => {
              this._onClearLifecycle();
-@@ -36261,7 +36379,7 @@
+@@ -36261,7 +36380,7 @@
  });
  
  // packages/playwright-core/src/server/chromium/crConnection.ts
 -var ConnectionEvents, kBrowserCloseMessageId, CRConnection, CRSession, CDPSession;
-+var ConnectionEvents, kBrowserCloseMessageId, CRConnection, rebrowserLookupWorldName, CRSession, CDPSession;
++var ConnectionEvents, kBrowserCloseMessageId, CRConnection, rebrowserLookupWorldName, rebrowserFallbackWarned, CRSession, CDPSession;
  var init_crConnection = __esm({
    "packages/playwright-core/src/server/chromium/crConnection.ts"() {
      "use strict";
-@@ -36324,6 +36442,7 @@
+@@ -36324,6 +36443,8 @@
          return new CDPSession(this.rootSession, sessionId);
        }
      };
 +    rebrowserLookupWorldName = [...Array(Math.floor(Math.random() * (10 + 1)) + 10)].map(() => Math.random().toString(36)[2]).join("");
++    rebrowserFallbackWarned = false;
      CRSession = class _CRSession extends SdkObject {
        constructor(connection, parentSession, sessionId, eventListener) {
          super(connection, "cr-session");
-@@ -36406,6 +36525,132 @@
+@@ -36406,6 +36527,136 @@
          }
          this._callbacks.clear();
        }
@@ -275,6 +284,10 @@
 +            return contextId4;
 +        } catch (error) {
 +          process.env["REBROWSER_PATCHES_DEBUG"] && console.log("[rebrowser-patches][getMainWorld] object lookup failed, using a binding:", error);
++        }
++        if (!rebrowserFallbackWarned) {
++          rebrowserFallbackWarned = true;
++          console.warn("[rebrowser-patches] could not look up the page's context id without touching the page; falling back to a binding handshake that page scripts can notice. Please report this with your Chrome version. REBROWSER_PATCHES_RUNTIME_FIX_MODE=alwaysIsolated avoids it.");
 +        }
 +        return this.__re__getMainWorldByBinding({ client, frameId, isWorker });
 +      }
@@ -372,7 +385,7 @@
      };
      CDPSession = class _CDPSession extends SdkObject {
        constructor(parentSession, sessionId) {
-@@ -38661,7 +38906,7 @@
+@@ -38661,7 +38912,7 @@
          this._coverage = new CRCoverage(client);
          this._browserContext = browserContext;
          this._page = new Page(this, browserContext);
@@ -381,7 +394,7 @@
          this._networkManager = new CRNetworkManager(this._page, null);
          this.updateOffline();
          this.updateExtraHTTPHeaders();
-@@ -39006,7 +39251,8 @@
+@@ -39006,7 +39257,8 @@
            }),
            this._client.send("Log.enable", {}),
            lifecycleEventsEnabled = this._client.send("Page.setLifecycleEventsEnabled", { enabled: true }),
@@ -391,7 +404,7 @@
            this._client.send("Page.addScriptToEvaluateOnNewDocument", {
              source: "",
              worldName: this._crPage.utilityWorldName
-@@ -39221,6 +39467,8 @@
+@@ -39221,6 +39473,8 @@
          }
          const url3 = event.targetInfo.url;
          const worker = new Worker(this._page, url3);
@@ -400,7 +413,7 @@
          this._page.addWorker(event.sessionId, worker);
          this._workerSessions.set(event.sessionId, session);
          session.once("Runtime.executionContextCreated", async (event2) => {
-@@ -39230,7 +39478,9 @@
+@@ -39230,7 +39484,9 @@
            session.on("Inspector.workerScriptLoaded", () => worker.workerScriptLoaded());
          else
            worker.workerScriptLoaded();
@@ -411,7 +424,7 @@
          this._crPage._networkManager.addSession(session, this._page.frameManager.frame(event.targetInfo.parentFrameId ?? this._targetId) ?? void 0).catch(() => {
          });
          session._sendMayFail("Runtime.runIfWaitingForDebugger");
-@@ -39287,7 +39537,18 @@
+@@ -39287,7 +39543,18 @@
        async _onBindingCalled(event) {
          const pageOrError = await this._crPage._page.waitForInitializedOrError();
          if (!(pageOrError instanceof Error)) {
@@ -431,7 +444,7 @@
            if (context)
              await this._page.onBindingCalled(event.payload, context);
          }
-@@ -39605,6 +39866,8 @@
+@@ -39605,6 +39872,8 @@
        constructor(browserContext, session, url3) {
          super(browserContext, url3);
          this._session = session;
@@ -440,7 +453,7 @@
          this.browserContext = browserContext;
          if (!process.env.PLAYWRIGHT_DISABLE_SERVICE_WORKER_NETWORK)
            this._networkManager = new CRNetworkManager(null, this);
-@@ -39637,8 +39900,9 @@
+@@ -39637,8 +39906,9 @@
            const message = new ConsoleMessage(null, this, event.type, void 0, args, stackTraceToLocation(event.stackTrace), event.timestamp);
            this.browserContext.emit(BrowserContext.Events.Console, message);
          });
@@ -452,7 +465,7 @@
          session.send("Runtime.runIfWaitingForDebugger").catch((e) => {
          });
          session.on("Inspector.targetReloadedAfterCrash", () => {
-@@ -44297,7 +44561,11 @@
+@@ -44297,7 +44567,11 @@
            }).catch((e) => null);
          });
          Promise.all([
@@ -465,7 +478,7 @@
            session.send("Runtime.addBinding", { name: kBindingName2 }),
            session.send("Page.enable"),
            session.send("Page.addScriptToEvaluateOnNewDocument", { source: `
-@@ -44782,6 +45050,13 @@
+@@ -44782,6 +45056,13 @@
            if (proxyBypassRules.length > 0)
              chromeArguments.push(`--proxy-bypass-list=${proxyBypassRules.join(";")}`);
          }

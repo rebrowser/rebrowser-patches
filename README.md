@@ -90,11 +90,12 @@ or in command line:
 REBROWSER_PATCHES_RUNTIME_FIX_MODE=alwaysIsolated node app.js
 ```
 
-### Change sourceURL to generic script name
-By default, Puppeteer adds `//# sourceURL=pptr:...` to every script in `page.evaluate()`. A remote website can detect this behavior and raise red flags. 
-This patch changes it to `//# sourceURL=app.js`. Playwright runs `page.evaluate()` through a helper class named `UtilityScript`, so an `Error().stack` taken inside your code says `UtilityScript.evaluate`; the Playwright patch renames that class. You can also adjust it via environment variable:
+### Keep library names out of stack traces
+By default, Puppeteer adds `//# sourceURL=pptr:...` to every script in `page.evaluate()`, and Playwright runs `page.evaluate()` through a helper class named `UtilityScript`. A page that takes `new Error().stack` while your code runs (for example from a getter your code touches) sees those names and knows it's being automated.
+
+The Puppeteer patch adds no sourceURL at all, so frames show `<anonymous>` like any other injected script. The Playwright patch renames the helper to a short name picked at random per process and shifts its line numbers, so there's no fixed name or position to look for. You can adjust it via environment variable:
 ```shell
-# use any generic filename
+# Puppeteer only: use a sourceURL of your choice
 REBROWSER_PATCHES_SOURCE_URL=jquery.min.js
 # use 0 to completely disable this patch (Puppeteer and Playwright)
 REBROWSER_PATCHES_SOURCE_URL=0
