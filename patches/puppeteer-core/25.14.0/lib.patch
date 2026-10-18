@@ -94,7 +94,16 @@
     * Copyright 2017 Google Inc.
     * SPDX-License-Identifier: Apache-2.0
     */
-@@ -16589,6 +16591,7 @@
+@@ -16553,6 +16555,8 @@
+     var e = new Error(message);
+     return e.name = "SuppressedError", e.error = error, e.suppressed = suppressed, e;
+   });
++  // rebrowser-patches: isolated world used to look up main-world context ids; one random name per process
++  const rebrowserLookupWorldName = [...Array(Math.floor(Math.random() * (10 + 1)) + 10)].map(() => Math.random().toString(36)[2]).join('');
+   /**
+    * @internal
+    */
+@@ -16589,6 +16593,7 @@
        _classPrivateFieldInitSpec(this, _client6, void 0);
        _classPrivateFieldInitSpec(this, _world3, void 0);
        _classPrivateFieldInitSpec(this, _id4, void 0);
@@ -102,7 +111,7 @@
        _classPrivateFieldInitSpec(this, _name4, void 0);
        _classPrivateFieldInitSpec(this, _disposables, new DisposableStack());
        _classPrivateFieldInitSpec(this, _logger13, void 0);
-@@ -16606,16 +16609,22 @@
+@@ -16606,16 +16611,22 @@
        if (contextPayload.name) {
          _classPrivateFieldSet(_name4, this, contextPayload.name);
        }
@@ -132,7 +141,7 @@
        clientEmitter.on('Runtime.consoleAPICalled', _assertClassBrand(_ExecutionContext_brand, this, _onConsoleAPI).bind(this));
        clientEmitter.on(exports.CDPSessionEvent.Disconnected, () => {
          this[disposeSymbol]();
-@@ -16740,6 +16749,182 @@
+@@ -16740,6 +16751,270 @@
      async evaluateHandle(pageFunction, ...args) {
        return await _assertClassBrand(_ExecutionContext_brand, this, _evaluate).call(this, false, pageFunction, ...args);
      }
@@ -148,7 +157,82 @@
 +      frameId,
 +      isWorker = false
 +    }) {
++      // rebrowser-patches: learn the main world's context id without running anything in the page, so there is
++      // nothing for page scripts to notice. Only if that fails (e.g. Chrome changes its object id format), fall back to
++      // the binding handshake.
++      try {
++        const contextId = await this.__re__getMainWorldIdByObject({
++          client,
++          frameId,
++          isWorker
++        });
++        if (contextId) return contextId;
++      } catch (error) {
++        process.env['REBROWSER_PATCHES_DEBUG'] && console.log('[rebrowser-patches][getMainWorld] object lookup failed, using a binding:', error);
++      }
++      return this.__re__getMainWorldByBinding({
++        client,
++        frameId,
++        isWorker
++      });
++    }
++    // A worker evaluates `this` in its only context. A frame reads `document` in an isolated world and resolves that
++    // node again without a context, which lands in the frame's main world. Either way the remote object id is
++    // "<isolate>.<contextId>.<id>".
++    async __re__getMainWorldIdByObject({
++      client,
++      frameId,
++      isWorker
++    }) {
++      const objectGroup = 'g' + Math.random().toString(36).slice(2);
++      let objectId;
++      try {
++        if (isWorker) {
++          objectId = (await client.send('Runtime.evaluate', {
++            expression: 'this',
++            objectGroup
++          })).result.objectId;
++        } else {
++          const {
++            executionContextId
++          } = await client.send('Page.createIsolatedWorld', {
++            frameId,
++            worldName: rebrowserLookupWorldName,
++            grantUniveralAccess: true
++          });
++          const {
++            result
++          } = await client.send('Runtime.evaluate', {
++            expression: 'document',
++            contextId: executionContextId,
++            objectGroup
++          });
++          const {
++            node
++          } = await client.send('DOM.describeNode', {
++            objectId: result.objectId
++          });
++          objectId = (await client.send('DOM.resolveNode', {
++            backendNodeId: node.backendNodeId,
++            objectGroup
++          })).object.objectId;
++        }
++      } finally {
++        client.send('Runtime.releaseObjectGroup', {
++          objectGroup
++        }).catch(() => {});
++      }
++      const match = /^-?\d+\.(\d+)\.\d+$/.exec(objectId || '');
++      process.env['REBROWSER_PATCHES_DEBUG'] && console.log(`[rebrowser-patches][getMainWorldIdByObject] frameId = ${frameId}, objectId = ${objectId}`);
++      return match ? Number(match[1]) : undefined;
++    }
++    async __re__getMainWorldByBinding({
++      client,
++      frameId,
++      isWorker = false
++    }) {
 +      let contextId;
++      let identifier;
 +      // random name to make it harder to detect for any 3rd party script by watching window object and events
 +      const randomName = [...Array(Math.floor(Math.random() * (10 + 1)) + 10)].map(() => Math.random().toString(36)[2]).join('');
 +      process.env['REBROWSER_PATCHES_DEBUG'] && console.log(`[rebrowser-patches][getMainWorld] binding name = ${randomName}`);
@@ -192,10 +276,12 @@
 +      } else {
 +        // we could call the binding right from `addScriptToEvaluateOnNewDocument`, but this way it will be called in all existing frames and it's hard to distinguish children from the parent
 +        // use `window`, not `self`: pages can reassign `self` (or make it throw, e.g. LavaMoat scuttling), `window` is unforgeable
-+        await client.send('Page.addScriptToEvaluateOnNewDocument', {
++        ({
++          identifier
++        } = await client.send('Page.addScriptToEvaluateOnNewDocument', {
 +          source: `document.addEventListener('${randomName}', (e) => window['${randomName}'](e.detail.frameId))`,
 +          runImmediately: true
-+        });
++        }));
 +        // create new isolated world for this frame
 +        const createIsolatedWorldResult = await client.send('Page.createIsolatedWorld', {
 +          frameId,
@@ -212,6 +298,17 @@
 +      process.env['REBROWSER_PATCHES_DEBUG'] && console.log(`[rebrowser-patches][getMainWorld] result:`, {
 +        contextId
 +      });
++      // don't leave the handshake behind: a native function with a random name on the global object is easy to spot
++      client.send('Runtime.removeBinding', {
++        name: randomName
++      }).catch(() => {});
++      if (contextId) client.send('Runtime.evaluate', {
++        expression: `delete this['${randomName}']`,
++        contextId
++      }).catch(() => {});
++      if (identifier) client.send('Page.removeScriptToEvaluateOnNewDocument', {
++        identifier
++      }).catch(() => {});
 +      return contextId;
 +    }
 +    async __re__getIsolatedWorld({
@@ -315,7 +412,7 @@
      [disposeSymbol]() {
        _classPrivateFieldGet(_disposables, this).dispose();
        this.emit('disposed', undefined);
-@@ -16792,7 +16977,19 @@
+@@ -16792,7 +17067,19 @@
    }
    async function _onBindingCalled(event) {
      if (event.executionContextId !== _classPrivateFieldGet(_id4, this)) {
@@ -336,7 +433,7 @@
      }
      let payload;
      try {
-@@ -16840,6 +17037,12 @@
+@@ -16840,6 +17127,12 @@
      }
    }
    async function _evaluate(returnByValue, pageFunction, ...args) {
@@ -349,7 +446,7 @@
      const sourceUrlComment = getSourceUrlComment(getSourcePuppeteerURLIfAvailable(pageFunction)?.toString() ?? PuppeteerURL.INTERNAL_URL);
      if (isString(pageFunction)) {
        const contextId = _classPrivateFieldGet(_id4, this);
-@@ -16987,6 +17190,26 @@
+@@ -16987,6 +17280,26 @@
    };
  
    /**
@@ -376,7 +473,7 @@
     * @internal
     */
    var _world4 = /*#__PURE__*/new WeakMap();
-@@ -17016,6 +17239,10 @@
+@@ -17016,6 +17329,10 @@
        _classPrivateFieldSet(_world4, this, new IsolatedWorld(this, new TimeoutSettings(), MAIN_WORLD, logger));
        _classPrivateFieldSet(_emitter2, this, new EventEmitter(undefined, logger));
        _classPrivateFieldGet(_client7, this).once('Runtime.executionContextCreated', async event => {
@@ -387,7 +484,7 @@
          _classPrivateFieldGet(_world4, this).setContext(new ExecutionContext(client, event.context, _classPrivateFieldGet(_world4, this), logger));
        });
        _classPrivateFieldGet(_client7, this).once('Inspector.workerScriptLoaded', () => {
-@@ -17058,9 +17285,23 @@
+@@ -17058,9 +17375,23 @@
        networkManager?.addClient(_classPrivateFieldGet(_client7, this)).catch(err => {
          return _classPrivateFieldGet(_logger14, this)?.call(this, DEBUG_PREFIXES.error)?.(err);
        });
@@ -414,7 +511,7 @@
      }
      mainRealm() {
        return _classPrivateFieldGet(_world4, this);
-@@ -17108,6 +17349,7 @@
+@@ -17108,6 +17439,7 @@
      }
    }
  
@@ -422,7 +519,7 @@
    /**
     * @license
     * Copyright 2019 Google Inc.
-@@ -17191,6 +17433,8 @@
+@@ -17191,6 +17523,8 @@
        if (!context) {
          context = await _assertClassBrand(_IsolatedWorld_brand, this, _waitForExecutionContext).call(this);
        }
@@ -431,7 +528,7 @@
        const {
          object
        } = await this.client.send('DOM.resolveNode', {
-@@ -17293,6 +17537,23 @@
+@@ -17293,6 +17627,23 @@
     * Waits for the next context to be set on the isolated world.
     */
    async function _waitForExecutionContext() {
@@ -455,7 +552,7 @@
      const error = new Error('Execution context was destroyed');
      const result = await firstValueFrom(fromEmitterEvent(_classPrivateFieldGet(_emitter3, this), 'context').pipe(raceWith(fromEmitterEvent(_classPrivateFieldGet(_emitter3, this), 'disposed').pipe(map(() => {
        // The message has to match the CDP message expected by the WaitTask class.
-@@ -19621,6 +19882,10 @@
+@@ -19621,6 +19972,10 @@
          _assertClassBrand(_FrameManager_brand, this, _onFrameStoppedLoading).call(this, event.frameId);
        });
        session.on('Runtime.executionContextCreated', async event => {
@@ -466,7 +563,7 @@
          await _classPrivateFieldGet(_frameTreeHandled, this)?.valueOrThrow();
          _assertClassBrand(_FrameManager_brand, this, _onExecutionContextCreated).call(this, event.context, session);
        });
-@@ -19647,13 +19912,39 @@
+@@ -19647,13 +20002,39 @@
            _classPrivateFieldGet(_frameTreeHandled, this)?.resolve();
          }), client.send('Page.setLifecycleEventsEnabled', {
            enabled: true
@@ -509,7 +606,7 @@
        } catch (error) {
          _classPrivateFieldGet(_frameTreeHandled, this)?.resolve();
          // The target might have been closed before the initialization finished.
-@@ -19891,6 +20182,37 @@
+@@ -19891,6 +20272,37 @@
        }
        this._frameTree.addFrame(frame);
      }
@@ -547,7 +644,7 @@
      frame = await this._frameTree.waitForFrame(frameId);
      frame._navigated(framePayload);
      this.emit(exports.FrameManagerEvent.FrameNavigated, frame);
-@@ -19914,6 +20236,23 @@
+@@ -19914,6 +20326,23 @@
          frameId: frame._id,
          worldName: name,
          grantUniveralAccess: true
@@ -581,12 +678,14 @@
      constructor(client: CDPSession, contextPayload: Protocol.Runtime.ExecutionContextDescription, world: IsolatedWorld, logger: Logger);
      get id(): number;
      /**
-@@ -123,6 +124,10 @@
+@@ -123,6 +124,12 @@
       * {@link ElementHandle | element handle}.
       */
      evaluateHandle<Params extends unknown[], Func extends EvaluateFunc<Params> = EvaluateFunc<Params>>(pageFunction: Func | string, ...args: Params): Promise<HandleFor<Awaited<ReturnType<Func>>>>;
 +    clear(newId: any): void;
 +    __re__getMainWorld({ client, frameId, isWorker }: any): Promise<any>;
++    __re__getMainWorldIdByObject({ client, frameId, isWorker }: any): Promise<number | undefined>;
++    __re__getMainWorldByBinding({ client, frameId, isWorker }: any): Promise<any>;
 +    __re__getIsolatedWorld({ client, frameId, worldName }: any): Promise<any>;
 +    acquireContextId(tryCount?: number): Promise<any>;
      [disposeSymbol](): void;
@@ -595,7 +694,16 @@
 \ No newline at end of file
 --- a/lib/puppeteer/cdp/ExecutionContext.js
 +++ b/lib/puppeteer/cdp/ExecutionContext.js
-@@ -92,6 +92,7 @@
+@@ -70,6 +70,8 @@
+ import { CdpElementHandle } from './ElementHandle.js';
+ import { CdpJSHandle } from './JSHandle.js';
+ import { addPageBinding, CDP_BINDING_PREFIX, createEvaluationError, valueFromPrimitiveRemoteObject, } from './utils.js';
++// rebrowser-patches: isolated world used to look up main-world context ids; one random name per process
++const rebrowserLookupWorldName = [...Array(Math.floor(Math.random() * (10 + 1)) + 10)].map(() => Math.random().toString(36)[2]).join('');
+ /**
+  * @internal
+  */
+@@ -92,6 +94,7 @@
      #client;
      #world;
      #id;
@@ -603,7 +711,7 @@
      #name;
      #disposables = new DisposableStack();
      #logger;
-@@ -104,16 +105,22 @@
+@@ -104,16 +107,22 @@
          if (contextPayload.name) {
              this.#name = contextPayload.name;
          }
@@ -633,7 +741,7 @@
          clientEmitter.on('Runtime.consoleAPICalled', this.#onConsoleAPI.bind(this));
          clientEmitter.on(CDPSessionEvent.Disconnected, () => {
              this[disposeSymbol]();
-@@ -171,7 +178,22 @@
+@@ -171,7 +180,22 @@
      }
      async #onBindingCalled(event) {
          if (event.executionContextId !== this.#id) {
@@ -657,7 +765,7 @@
          }
          let payload;
          try {
-@@ -339,7 +361,182 @@
+@@ -339,7 +363,227 @@
      async evaluateHandle(pageFunction, ...args) {
          return await this.#evaluate(false, pageFunction, ...args);
      }
@@ -669,7 +777,46 @@
 +        this.#puppeteerUtil = undefined;
 +    }
 +    async __re__getMainWorld({ client, frameId, isWorker = false }) {
++        // rebrowser-patches: learn the main world's context id without running anything in the page, so there is
++        // nothing for page scripts to notice. Only if that fails (e.g. Chrome changes its object id format), fall back to
++        // the binding handshake.
++        try {
++            const contextId = await this.__re__getMainWorldIdByObject({ client, frameId, isWorker });
++            if (contextId)
++                return contextId;
++        }
++        catch (error) {
++            process.env['REBROWSER_PATCHES_DEBUG'] && console.log('[rebrowser-patches][getMainWorld] object lookup failed, using a binding:', error);
++        }
++        return this.__re__getMainWorldByBinding({ client, frameId, isWorker });
++    }
++    // A worker evaluates `this` in its only context. A frame reads `document` in an isolated world and resolves that
++    // node again without a context, which lands in the frame's main world. Either way the remote object id is
++    // "<isolate>.<contextId>.<id>".
++    async __re__getMainWorldIdByObject({ client, frameId, isWorker }) {
++        const objectGroup = 'g' + Math.random().toString(36).slice(2);
++        let objectId;
++        try {
++            if (isWorker) {
++                objectId = (await client.send('Runtime.evaluate', { expression: 'this', objectGroup })).result.objectId;
++            }
++            else {
++                const { executionContextId } = await client.send('Page.createIsolatedWorld', { frameId, worldName: rebrowserLookupWorldName, grantUniveralAccess: true });
++                const { result } = await client.send('Runtime.evaluate', { expression: 'document', contextId: executionContextId, objectGroup });
++                const { node } = await client.send('DOM.describeNode', { objectId: result.objectId });
++                objectId = (await client.send('DOM.resolveNode', { backendNodeId: node.backendNodeId, objectGroup })).object.objectId;
++            }
++        }
++        finally {
++            client.send('Runtime.releaseObjectGroup', { objectGroup }).catch(() => { });
++        }
++        const match = /^-?\d+\.(\d+)\.\d+$/.exec(objectId || '');
++        process.env['REBROWSER_PATCHES_DEBUG'] && console.log(`[rebrowser-patches][getMainWorldIdByObject] frameId = ${frameId}, objectId = ${objectId}`);
++        return match ? Number(match[1]) : undefined;
++    }
++    async __re__getMainWorldByBinding({ client, frameId, isWorker = false }) {
 +        let contextId;
++        let identifier;
 +        // random name to make it harder to detect for any 3rd party script by watching window object and events
 +        const randomName = [...Array(Math.floor(Math.random() * (10 + 1)) + 10)].map(() => Math.random().toString(36)[2]).join('');
 +        process.env['REBROWSER_PATCHES_DEBUG'] && console.log(`[rebrowser-patches][getMainWorld] binding name = ${randomName}`);
@@ -710,10 +857,10 @@
 +        else {
 +            // we could call the binding right from `addScriptToEvaluateOnNewDocument`, but this way it will be called in all existing frames and it's hard to distinguish children from the parent
 +            // use `window`, not `self`: pages can reassign `self` (or make it throw, e.g. LavaMoat scuttling), `window` is unforgeable
-+            await client.send('Page.addScriptToEvaluateOnNewDocument', {
++            ({ identifier } = await client.send('Page.addScriptToEvaluateOnNewDocument', {
 +                source: `document.addEventListener('${randomName}', (e) => window['${randomName}'](e.detail.frameId))`,
 +                runImmediately: true,
-+            });
++            }));
 +            // create new isolated world for this frame
 +            const createIsolatedWorldResult = await client.send('Page.createIsolatedWorld', {
 +                frameId,
@@ -728,6 +875,12 @@
 +            });
 +        }
 +        process.env['REBROWSER_PATCHES_DEBUG'] && console.log(`[rebrowser-patches][getMainWorld] result:`, { contextId });
++        // don't leave the handshake behind: a native function with a random name on the global object is easy to spot
++        client.send('Runtime.removeBinding', { name: randomName }).catch(() => { });
++        if (contextId)
++            client.send('Runtime.evaluate', { expression: `delete this['${randomName}']`, contextId }).catch(() => { });
++        if (identifier)
++            client.send('Page.removeScriptToEvaluateOnNewDocument', { identifier }).catch(() => { });
 +        return contextId;
 +    }
 +    async __re__getIsolatedWorld({ client, frameId, worldName }) {

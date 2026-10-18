@@ -12,6 +12,10 @@
 //            native while it parses (never a JS stand-in), and no page-visible function source may name the patches.
 //            The unpatched library is the reference (native binding, no marker).
 //
+//   globals: no global may appear on window (main frame and iframe, across a navigation) while the library evaluates,
+//            waits for selectors and reads the DOM. The patches' context lookup must leave nothing behind (the old
+//            binding handshake left native functions with random names). The unpatched library is the reference.
+//
 //   controls (must leak): the unpatched upstream library; the patched library with the opt-out env var
 //   gates (must be clean): the patched library with defaults
 import path from 'node:path'
@@ -33,6 +37,8 @@ export async function run(ctx) {
       { check: 'stack', id: `${fam.key}-stack-patched-default`, lib: fam.patched.name, env: {}, control: false, expectLeak: false },
     ]
     cfgs.push(
+      { check: 'globals', id: `${fam.key}-globals-unpatched-${fam.upstream.name}@${fam.upstream.version}`, ...unpatched, expectLeak: false },
+      { check: 'globals', id: `${fam.key}-globals-patched-default`, lib: fam.patched.name, env: {}, control: false, expectLeak: false },
       { check: 'binding', id: `${fam.key}-binding-unpatched-${fam.upstream.name}@${fam.upstream.version}`, ...unpatched, expectLeak: false },
       { check: 'binding', id: `${fam.key}-binding-patched-default`, lib: fam.patched.name, env: {}, control: false, expectLeak: false },
     )
@@ -61,6 +67,9 @@ export async function run(ctx) {
           const m = String(out.stack).match(STACK_MARKER)
           leaked = !!m
           shown = m ? `stack names "${m[0]}"` : 'stack clean'
+        } else if (c.check === 'globals') {
+          leaked = out.globals.length > 0
+          shown = leaked ? `globals appeared: ${out.globals.slice(0, 6).join(', ')}` : 'no globals appeared'
         } else if (c.check === 'binding') {
           const p = out.binding.parse || {}
           const stub = p.type !== 'undefined' && !(p.type === 'function' && p.native)

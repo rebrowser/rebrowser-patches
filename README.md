@@ -52,7 +52,9 @@ In brief, it's a few lines of JavaScript on the page that are automatically call
 
 Our fix disables the automatic `Runtime.Enable` command on every frame. Instead, we manually create contexts with unknown IDs when a frame is created. Then, when code needs to be executed, there are multiple ways to get the context ID.
 
-#### 1. Create a new binding in the main world, call it and save its context ID.
+#### 1. Look up the main world's context ID from the DevTools side (mode `addBinding`, the default).
+The patch reads the frame's `document` in an isolated world, resolves that node again in the frame's main world and takes the context ID from the result. Nothing runs in the page, and nothing is added to it. Only if that lookup fails does it fall back to the original technique: create a binding in the main world, call it and save its context ID. The fallback cleans up after itself, but a page could briefly see a global with a random name.
+
 🟢 Pros: The ultimate approach that keeps access to the main world and works with web workers and iframes. You don't need to change any of your existing codebase.
 
 🔴 Cons: None are discovered so far.

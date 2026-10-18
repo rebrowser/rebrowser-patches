@@ -1,8 +1,18 @@
 diff --git a/src/cdp/ExecutionContext.ts b/src/cdp/ExecutionContext.ts
-index 8d6da1e..bda0bcb 100644
+index 8d6da1e..e7f6143 100644
 --- a/src/cdp/ExecutionContext.ts
 +++ b/src/cdp/ExecutionContext.ts
-@@ -86,6 +86,7 @@ export class ExecutionContext
+@@ -39,6 +39,9 @@ import {
+   valueFromPrimitiveRemoteObject,
+ } from './utils.js';
+ 
++// rebrowser-patches: isolated world used to look up main-world context ids; one random name per process
++const rebrowserLookupWorldName = [...Array(Math.floor(Math.random() * (10 + 1)) + 10)].map(() => Math.random().toString(36)[2]).join('');
++
+ /**
+  * @internal
+  */
+@@ -86,6 +89,7 @@ export class ExecutionContext
    #client: CDPSession;
    #world: IsolatedWorld;
    #id: number;
@@ -10,7 +20,7 @@ index 8d6da1e..bda0bcb 100644
    #name?: string;
  
    readonly #disposables = new DisposableStack();
-@@ -105,16 +106,22 @@ export class ExecutionContext
+@@ -105,16 +109,22 @@ export class ExecutionContext
      if (contextPayload.name) {
        this.#name = contextPayload.name;
      }
@@ -40,7 +50,7 @@ index 8d6da1e..bda0bcb 100644
      clientEmitter.on('Runtime.consoleAPICalled', this.#onConsoleAPI.bind(this));
      clientEmitter.on(CDPSessionEvent.Disconnected, () => {
        this[disposeSymbol]();
-@@ -177,7 +184,23 @@ export class ExecutionContext
+@@ -177,7 +187,23 @@ export class ExecutionContext
      event: Protocol.Runtime.BindingCalledEvent,
    ): Promise<void> {
      if (event.executionContextId !== this.#id) {
@@ -65,7 +75,7 @@ index 8d6da1e..bda0bcb 100644
      }
  
      let payload: BindingPayload;
-@@ -369,6 +392,187 @@ export class ExecutionContext
+@@ -369,6 +395,229 @@ export class ExecutionContext
      return await this.#evaluate(false, pageFunction, ...args);
    }
  
@@ -77,7 +87,43 @@ index 8d6da1e..bda0bcb 100644
 +    this.#puppeteerUtil = undefined;
 +  }
 +  async __re__getMainWorld({ client, frameId, isWorker = false }: any) {
++    // rebrowser-patches: learn the main world's context id without running anything in the page, so there is
++    // nothing for page scripts to notice. Only if that fails (e.g. Chrome changes its object id format), fall back to
++    // the binding handshake.
++    try {
++      const contextId = await this.__re__getMainWorldIdByObject({ client, frameId, isWorker });
++      if (contextId)
++        return contextId;
++    } catch (error) {
++      process.env['REBROWSER_PATCHES_DEBUG'] && console.log('[rebrowser-patches][getMainWorld] object lookup failed, using a binding:', error);
++    }
++    return this.__re__getMainWorldByBinding({ client, frameId, isWorker });
++  }
++  // A worker evaluates `this` in its only context. A frame reads `document` in an isolated world and resolves that
++  // node again without a context, which lands in the frame's main world. Either way the remote object id is
++  // "<isolate>.<contextId>.<id>".
++  async __re__getMainWorldIdByObject({ client, frameId, isWorker }: any) {
++    const objectGroup = 'g' + Math.random().toString(36).slice(2);
++    let objectId: string | undefined;
++    try {
++      if (isWorker) {
++        objectId = (await client.send('Runtime.evaluate', { expression: 'this', objectGroup })).result.objectId;
++      } else {
++        const { executionContextId } = await client.send('Page.createIsolatedWorld', { frameId, worldName: rebrowserLookupWorldName, grantUniveralAccess: true });
++        const { result } = await client.send('Runtime.evaluate', { expression: 'document', contextId: executionContextId, objectGroup });
++        const { node } = await client.send('DOM.describeNode', { objectId: result.objectId });
++        objectId = (await client.send('DOM.resolveNode', { backendNodeId: node.backendNodeId, objectGroup })).object.objectId;
++      }
++    } finally {
++      client.send('Runtime.releaseObjectGroup', { objectGroup }).catch(() => {});
++    }
++    const match = /^-?\d+\.(\d+)\.\d+$/.exec(objectId || '');
++    process.env['REBROWSER_PATCHES_DEBUG'] && console.log(`[rebrowser-patches][getMainWorldIdByObject] frameId = ${frameId}, objectId = ${objectId}`);
++    return match ? Number(match[1]) : undefined;
++  }
++  async __re__getMainWorldByBinding({ client, frameId, isWorker = false }: any) {
 +    let contextId: any;
++    let identifier: any;
 +
 +    // random name to make it harder to detect for any 3rd party script by watching window object and events
 +    const randomName = [...Array(Math.floor(Math.random() * (10 + 1)) + 10)].map(() => Math.random().toString(36)[2]).join('');
@@ -121,10 +167,10 @@ index 8d6da1e..bda0bcb 100644
 +    } else {
 +      // we could call the binding right from `addScriptToEvaluateOnNewDocument`, but this way it will be called in all existing frames and it's hard to distinguish children from the parent
 +      // use `window`, not `self`: pages can reassign `self` (or make it throw, e.g. LavaMoat scuttling), `window` is unforgeable
-+      await client.send('Page.addScriptToEvaluateOnNewDocument', {
++      ({ identifier } = await client.send('Page.addScriptToEvaluateOnNewDocument', {
 +        source: `document.addEventListener('${randomName}', (e) => window['${randomName}'](e.detail.frameId))`,
 +        runImmediately: true,
-+      });
++      }));
 +
 +      // create new isolated world for this frame
 +      const createIsolatedWorldResult = await client.send('Page.createIsolatedWorld', {
@@ -142,6 +188,12 @@ index 8d6da1e..bda0bcb 100644
 +    }
 +
 +    process.env['REBROWSER_PATCHES_DEBUG'] && console.log(`[rebrowser-patches][getMainWorld] result:`, { contextId });
++    // don't leave the handshake behind: a native function with a random name on the global object is easy to spot
++    client.send('Runtime.removeBinding', { name: randomName }).catch(() => {});
++    if (contextId)
++      client.send('Runtime.evaluate', { expression: `delete this['${randomName}']`, contextId }).catch(() => {});
++    if (identifier)
++      client.send('Page.removeScriptToEvaluateOnNewDocument', { identifier }).catch(() => {});
 +    return contextId;
 +  }
 +  async __re__getIsolatedWorld({ client, frameId, worldName }: any) {
@@ -253,7 +305,7 @@ index 8d6da1e..bda0bcb 100644
    async #evaluate<
      Params extends unknown[],
      Func extends EvaluateFunc<Params> = EvaluateFunc<Params>,
-@@ -393,6 +597,13 @@ export class ExecutionContext
+@@ -393,6 +642,13 @@ export class ExecutionContext
      pageFunction: Func | string,
      ...args: Params
    ): Promise<HandleFor<Awaited<ReturnType<Func>>> | Awaited<ReturnType<Func>>> {
