@@ -91,5 +91,6 @@ npm and PyPI never accept the same version twice, so a fix to an already publish
 ## Modes and env vars (for reference)
 `REBROWSER_PATCHES_RUNTIME_FIX_MODE` = `addBinding` (default) | `alwaysIsolated` | `enableDisable`
 (not recommended, still calls Runtime.enable) | `0` (off). `REBROWSER_PATCHES_WEBDRIVER_FIX=0` disables
-the navigator.webdriver flag. `REBROWSER_PATCHES_SOURCE_URL`, `REBROWSER_PATCHES_UTILITY_WORLD_NAME`,
+the navigator.webdriver fix and keeps the upstream launch switches (popup blocking, IPC flooding protection,
+Playwright's storage partitioning). `REBROWSER_PATCHES_SOURCE_URL`, `REBROWSER_PATCHES_UTILITY_WORLD_NAME`,
 `REBROWSER_PATCHES_DEBUG` as documented in the README.

@@ -1,0 +1,33 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>leak-flags</title></head>
+<body><textarea id="__flags"></textarea>
+<script>
+// Page-visible effects of the default launch switches, measured by the page itself on load (no user activation):
+//   popup:     window.open() without a click opens (--disable-popup-blocking)
+//   applied:   how many of 300 rapid history.replaceState() calls an iframe applied (Chrome ignores them after 200
+//              unless --disable-ipc-flooding-protection)
+//   leafValue: what an A->B->A leaf iframe reads from the top page's localStorage key (it sees the key only when
+//              third-party storage partitioning is disabled)
+;(async () => {
+  const out = {}
+  const popup = window.open('about:blank', '_blank', 'popup,width=100,height=100')
+  out.popup = !!popup
+  if (popup) popup.close()
+  const frame = document.createElement('iframe')
+  document.body.appendChild(frame)
+  try { for (let i = 1; i <= 300; i++) frame.contentWindow.history.replaceState({ i }, '') } catch (e) { out.historyError = String(e.name || e) }
+  out.applied = frame.contentWindow.history.state ? frame.contentWindow.history.state.i : null
+  frame.remove()
+  const key = String(Math.random())
+  localStorage.setItem('aba', key)
+  out.leafValue = await new Promise(resolve => {
+    setTimeout(() => resolve('timeout'), 10000)
+    addEventListener('message', e => { if (e.data && e.data.abaLeaf) resolve(e.data.value === key ? 'top key' : String(e.data.value)) })
+    const mid = document.createElement('iframe')
+    mid.src = 'http://localhost:{{PORT_B}}/aba-mid.html'
+    document.body.appendChild(mid)
+  })
+  localStorage.removeItem('aba')
+  document.getElementById('__flags').value = JSON.stringify(out)
+})()
+</script></body></html>

@@ -16,6 +16,11 @@
 //            waits for selectors and reads the DOM. The patches' context lookup must leave nothing behind (the old
 //            binding handshake left native functions with random names). The unpatched library is the reference.
 //
+//   popup, history, partition: the default launch switches must not show to a page. Upstream passes
+//            --disable-popup-blocking (a page opens popups without a click), --disable-ipc-flooding-protection (300
+//            rapid history updates all apply; Chrome stops at 200) and Playwright disables ThirdPartyStoragePartitioning
+//            (an A->B->A leaf iframe reads the top page's localStorage). REBROWSER_PATCHES_WEBDRIVER_FIX=0 keeps them.
+//
 //   controls (must leak): the unpatched upstream library; the patched library with the opt-out env var
 //   gates (must be clean): the patched library with defaults
 import path from 'node:path'
@@ -42,6 +47,14 @@ export async function run(ctx) {
       { check: 'binding', id: `${fam.key}-binding-unpatched-${fam.upstream.name}@${fam.upstream.version}`, ...unpatched, expectLeak: false },
       { check: 'binding', id: `${fam.key}-binding-patched-default`, lib: fam.patched.name, env: {}, control: false, expectLeak: false },
     )
+    const switchesOff = { lib: fam.patched.name, env: { REBROWSER_PATCHES_WEBDRIVER_FIX: '0' }, control: true }
+    for (const check of ['popup', 'history', ...(fam.key === 'pw' ? ['partition'] : [])]) {
+      cfgs.push(
+        { check, id: `${fam.key}-${check}-unpatched-${fam.upstream.name}@${fam.upstream.version}`, ...unpatched, expectLeak: true },
+        { check, id: `${fam.key}-${check}-patched-WEBDRIVER_FIX=0`, ...switchesOff, expectLeak: true },
+        { check, id: `${fam.key}-${check}-patched-default`, lib: fam.patched.name, env: {}, control: false, expectLeak: false },
+      )
+    }
     if (fam.key === 'pptr') {
       cfgs.push(
         { check: 'flag', id: `pptr-flag-unpatched-${fam.upstream.name}@${fam.upstream.version}`, ...unpatched, expectLeak: true },
@@ -75,6 +88,17 @@ export async function run(ctx) {
           const stub = p.type !== 'undefined' && !(p.type === 'function' && p.native)
           leaked = stub || out.binding.marker
           shown = `binding while parsing: ${p.type}${p.type === 'function' ? (p.native ? ' (native)' : ' (JS stand-in)') : ''}; marker in page functions: ${out.binding.marker ? 'yes' : 'no'}`
+        } else if (c.check === 'popup') {
+          leaked = out.flags ? out.flags.popup : null
+          shown = leaked === null ? 'no measurement' : leaked ? 'popup opened without a click' : 'popup blocked'
+        } else if (c.check === 'history') {
+          const applied = out.flags?.applied
+          leaked = typeof applied === 'number' ? applied === 300 : null
+          shown = leaked === null ? `no measurement (${out.flags?.historyError || 'no state'})` : `${applied} of 300 history updates applied`
+        } else if (c.check === 'partition') {
+          const v = out.flags?.leafValue
+          leaked = !v || v === 'timeout' ? null : v === 'top key'
+          shown = leaked === null ? 'leaf frame never answered' : leaked ? "A->B->A leaf reads the top page's storage" : 'storage partitioned'
         } else {
           leaked = /(^|\s)--enable-automation(\s|$)/.test(out.commandLine)
           shown = leaked ? '--enable-automation passed' : 'no --enable-automation'

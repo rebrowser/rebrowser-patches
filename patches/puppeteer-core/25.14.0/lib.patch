@@ -1332,13 +1332,14 @@
   * @internal
 --- a/lib/puppeteer/node/ChromeLauncher.js
 +++ b/lib/puppeteer/node/ChromeLauncher.js
-@@ -117,6 +117,19 @@
+@@ -117,6 +117,20 @@
          if (options.args && userDisabledFeatures.length > 0) {
              removeMatchingFlags(options.args, '--disable-features');
          }
 +        // rebrowser-patches: hide navigator.webdriver with --disable-blink-features=AutomationControlled,
-+        // merged with the user's own --disable-blink-features, and drop --enable-automation (below).
-+        // REBROWSER_PATCHES_WEBDRIVER_FIX=0 turns both off.
++        // merged with the user's own --disable-blink-features, and drop the flags below that pages can notice
++        // (--enable-automation, --disable-ipc-flooding-protection, --disable-popup-blocking).
++        // REBROWSER_PATCHES_WEBDRIVER_FIX=0 turns all of it off.
 +        const webdriverFix = process.env['REBROWSER_PATCHES_WEBDRIVER_FIX'] !== '0';
 +        const userDisabledBlinkFeatures = getFeatures('--disable-blink-features', options.args);
 +        if (webdriverFix && options.args && userDisabledBlinkFeatures.length > 0) {
@@ -1352,7 +1353,17 @@
          const turnOnExperimentalFeaturesForTesting = process.env['PUPPETEER_TEST_EXPERIMENTAL_CHROME_FEATURES'] === 'true';
          const userEnabledFeatures = getFeatures('--enable-features', options.args);
          if (options.args && userEnabledFeatures.length > 0) {
-@@ -175,7 +188,8 @@
+@@ -169,13 +183,16 @@
+             '--disable-dev-shm-usage',
+             '--disable-hang-monitor',
+             '--disable-infobars',
+-            '--disable-ipc-flooding-protection',
+-            '--disable-popup-blocking',
++            // rebrowser-patches: a normal Chrome ignores history updates past 200 in 10 s and blocks popups opened
++            // without a click; pages can test both
++            webdriverFix ? '' : '--disable-ipc-flooding-protection',
++            webdriverFix ? '' : '--disable-popup-blocking',
+             '--disable-prompt-on-repost',
              '--disable-renderer-backgrounding',
              '--disable-search-engine-choice-screen',
              '--disable-sync',
@@ -1362,7 +1373,7 @@
              '--export-tagged-pdf',
              '--force-color-profile=srgb',
              '--generate-pdf-document-outline',
-@@ -185,6 +199,9 @@
+@@ -185,6 +202,9 @@
              '--use-mock-keychain',
              `--disable-features=${disabledFeatures.join(',')}`,
              `--enable-features=${enabledFeatures.join(',')}`,

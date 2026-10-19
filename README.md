@@ -95,8 +95,9 @@ By default, Puppeteer adds `//# sourceURL=pptr:...` to every script in `page.eva
 
 The Puppeteer patch adds no sourceURL at all, so frames show `<anonymous>` like any other injected script. The Playwright patch renames the helper to a short name picked at random per process and shifts its line numbers, so there's no fixed name or position to look for. You can adjust it via environment variable:
 ```shell
-# Puppeteer only: use a sourceURL of your choice
-REBROWSER_PATCHES_SOURCE_URL=jquery.min.js
+# Puppeteer only: use a sourceURL of your choice. Prefer a full URL: a bare file name such as
+# jquery.min.js shows up in stack traces as a script with no address, which detectors can flag
+REBROWSER_PATCHES_SOURCE_URL=https://example.com/js/app.js
 # use 0 to completely disable this patch (Puppeteer and Playwright)
 REBROWSER_PATCHES_SOURCE_URL=0
 ```
@@ -105,6 +106,13 @@ REBROWSER_PATCHES_SOURCE_URL=0
 Chrome launched by Puppeteer or Playwright reports `navigator.webdriver = true` &mdash; an obvious automation flag that many anti-bot systems check. This patch adds `--disable-blink-features=AutomationControlled` to the default launch arguments so `navigator.webdriver` stays `false`. Any `--disable-blink-features=...` you pass yourself is merged in, not overwritten.
 
 Puppeteer also passes `--enable-automation`, which shows the "Chrome is being controlled by automated test software" bar. The Puppeteer patch drops it (Playwright stopped passing it in 1.64).
+
+Both libraries also launch Chrome with switches that a page can notice, so the patches drop them too:
+- `--disable-popup-blocking`: a page could open popups without a click. Now Chrome blocks popups the way it does for a real user: `page.click()` and `page.evaluate()` count as a click, so the first popup they open still opens, but a second one from the same click, one opened after a few seconds or one opened by the page on load is blocked. To bring the old behavior back, pass `--disable-popup-blocking` in `args`.
+- `--disable-ipc-flooding-protection`: Chrome normally ignores history updates past 200 in 10 seconds; with the switch, a page sees all of them applied. Only pages that change the URL more than ~20 times a second notice the difference. Pass the switch in `args` to keep it.
+- Playwright only, `ThirdPartyStoragePartitioning` in `--disable-features`: an iframe from another site that embeds a frame from the page's own site could read the page's `localStorage`. Now third-party storage is partitioned as in a normal Chrome. Playwright disabled partitioning so that `localStorage` seeded with `storageState` also shows up when that site is embedded in another site's page ([microsoft/playwright#32230](https://github.com/microsoft/playwright/issues/32230)); if you rely on that, set `REBROWSER_PATCHES_WEBDRIVER_FIX=0` and pass `--disable-blink-features=AutomationControlled` in `args` yourself, which keeps `navigator.webdriver` hidden. Passing your own `--disable-features=ThirdPartyStoragePartitioning` instead would replace Playwright's whole `--disable-features` list (Chrome keeps only the last one).
+
+This applies to Chrome launched with `puppeteer.launch()` and Playwright's `chromium.launch()` / `launchPersistentContext()`; Playwright's Android and Electron launchers are unchanged.
 ```shell
 # use 0 to disable this patch and keep the library's default behavior
 REBROWSER_PATCHES_WEBDRIVER_FIX=0
@@ -167,7 +175,7 @@ If you already have your package patched and want to update to the latest versio
 All these versions are just wrappers around Node.js version of Playwright. You need to find `driver` folder inside your Playwright package and run this patch with `--packagePath=$yourDriverFolder/$yourPlatform/package`.
 
 ## Puppeteer support
-✅ Latest fully tested version: 25.14.0 (released 2026-10-14), drop-in packages `25.14.100`
+✅ Latest fully tested version: 25.14.0 (released 2026-10-14), drop-in packages `25.14.101`
 
 ## Playwright support
 Playwright patches include:
@@ -179,7 +187,7 @@ Important: `page.pause()` method doesn't work with the enabled fix, it needs mor
 
 The patches target Chromium. On Firefox and WebKit the Chromium-specific context handling is skipped, so one install can drive all three browsers (before 1.64.1 it crashed with `_sessions is undefined`). Only small shared changes, such as the renamed `UtilityScript` helper, apply there too.
 
-✅ Latest fully tested version: 1.64.1 (released 2026-10-14), drop-in packages `1.64.100` (Python: `1.64.100`, built from playwright-python 1.64.0)
+✅ Latest fully tested version: 1.64.1 (released 2026-10-14), drop-in packages `1.64.101` (Python: `1.64.101`, built from playwright-python 1.64.0)
 
 ## How to use `rebrowser-puppeteer` with `puppeteer-extra`?
 Use `addExtra` method, here is the example:

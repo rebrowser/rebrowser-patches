@@ -1,0 +1,7 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>aba-leaf</title></head>
+<body><script>
+let value = null
+try { value = localStorage.getItem('aba') } catch (e) { value = 'error: ' + e.name }
+top.postMessage({ abaLeaf: true, value }, '*')
+</script></body></html>
