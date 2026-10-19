@@ -188,7 +188,7 @@ main(async () => {
     });
   }
   const n = (r) => results.filter((x) => x === r).length;
-  log(`mirror: ${n('pushed')} pushed, ${n('exists')} already present, ${n('would-push')} pending (dry run)`);
+  log(`mirror: ${n('pushed')} pushed, ${n('exists')} already present${values.yes ? '' : `, ${n('would-push')} pending (dry run)`}`);
   if (!values['no-default-branch']) {
     for (const repo of [...new Set(jobs.map((j) => j.repo))]) log(`${repo}: ${await setDefaultBranch(repo, !!values.yes)}`);
   }
