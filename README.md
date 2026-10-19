@@ -22,14 +22,21 @@ Playwright (Node.js): [rebrowser-playwright](https://www.npmjs.com/package/rebro
 
 Playwright (Python): [rebrowser-playwright](https://pypi.org/project/rebrowser-playwright/) ([src](https://github.com/rebrowser/rebrowser-playwright-python))
 
-The easiest way to start using it is to fix your `package.json` to use new packages but keep the old name as an alias. This way, you don't need to change any source code of your automation. Here is how to do that:
-1. Open `package.json` and replace `"puppeteer": "^23.3.1"` and `"puppeteer-core": "^23.3.1"` with `"puppeteer": "npm:rebrowser-puppeteer@^23.3.1"` and `"puppeteer-core": "npm:rebrowser-puppeteer-core@^23.3.1"`. Note: 23.3.1 is just an example, check the latest version on [npm](https://www.npmjs.com/package/rebrowser-puppeteer-core).
-2. Run `npm install` (or `yarn install`)
+The easiest way to start using them is to install them under the original package names (an npm alias). This way, you don't need to change any source code of your automation. Install only the packages your project already uses:
+```shell
+# Puppeteer
+npm install puppeteer@npm:rebrowser-puppeteer puppeteer-core@npm:rebrowser-puppeteer-core
 
-Another way is to actually use new packages instead of the original one. Here are the steps you need to follow:
-1. Open `package.json` and replace `puppeteer` and `puppeteer-core` packages with `rebrowser-puppeteer` and `rebrowser-puppeteer-core`. Don't change versions of the packages, just replace the names.
-2. Run `npm install` (or `yarn install`)
-3. Find and replace in your scripts any mentions of `puppeteer` and `puppeteer-core` with `rebrowser-puppeteer` and `rebrowser-puppeteer-core`
+# Playwright
+npm install playwright@npm:rebrowser-playwright playwright-core@npm:rebrowser-playwright-core
+```
+npm installs the latest version and saves it in `package.json` as `"puppeteer": "npm:rebrowser-puppeteer@^…"`. With yarn or pnpm, run `yarn add` or `pnpm add` with the same arguments.
+
+Another way is to use the new package names directly: install `rebrowser-puppeteer` and `rebrowser-puppeteer-core` (or `rebrowser-playwright` and `rebrowser-playwright-core`) instead of the original packages, then replace `puppeteer` with `rebrowser-puppeteer` (and so on) in your imports.
+
+For Python, run `pip install rebrowser-playwright` and import from `rebrowser_playwright` instead of `playwright`, e.g. `from rebrowser_playwright.sync_api import sync_playwright`.
+
+The packages follow the version numbers of the original libraries. A fix for a version that is already out ships as `X.Y.100`, `X.Y.101` and so on, so always install the latest version instead of matching the version of the original package.
 
 🚀 That's it! Just visit the [rebrowser-bot-detector](https://bot-detector.rebrowser.net/) page and test your patched browser.
 
