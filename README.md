@@ -16,11 +16,11 @@ Out of the box Puppeteer and Playwright come with some significant leaks that ar
 ## Is there an easy drop-in replacement?
 If you don't want to mess with the patches and all possible errors, there is a drop-in solution for you. These packages have simply applied rebrowser-patches on top of the original code, nothing more.
 
-Puppeteer: [rebrowser-puppeteer](https://www.npmjs.com/package/rebrowser-puppeteer) ([src](https://github.com/rebrowser/rebrowser-puppeteer)) and [rebrowser-puppeteer-core](https://www.npmjs.com/package/rebrowser-puppeteer-core) ([src](https://github.com/rebrowser/rebrowser-puppeteer-core))
+Puppeteer: [rebrowser-puppeteer](https://www.npmjs.com/package/rebrowser-puppeteer) ([source mirror](https://github.com/rebrowser/rebrowser-puppeteer)) and [rebrowser-puppeteer-core](https://www.npmjs.com/package/rebrowser-puppeteer-core) ([source mirror](https://github.com/rebrowser/rebrowser-puppeteer-core))
 
-Playwright (Node.js): [rebrowser-playwright](https://www.npmjs.com/package/rebrowser-playwright) ([src](https://github.com/rebrowser/rebrowser-playwright)) and [rebrowser-playwright-core](https://www.npmjs.com/package/rebrowser-playwright-core) ([src](https://github.com/rebrowser/rebrowser-playwright-core))
+Playwright (Node.js): [rebrowser-playwright](https://www.npmjs.com/package/rebrowser-playwright) ([source mirror](https://github.com/rebrowser/rebrowser-playwright)) and [rebrowser-playwright-core](https://www.npmjs.com/package/rebrowser-playwright-core) ([source mirror](https://github.com/rebrowser/rebrowser-playwright-core))
 
-Playwright (Python): [rebrowser-playwright](https://pypi.org/project/rebrowser-playwright/) ([src](https://github.com/rebrowser/rebrowser-playwright-python))
+Playwright (Python): [rebrowser-playwright](https://pypi.org/project/rebrowser-playwright/) ([source mirror](https://github.com/rebrowser/rebrowser-playwright-python))
 
 The easiest way to start using them is to install them under the original package names (an npm alias). This way, you don't need to change any source code of your automation. Install only the packages your project already uses:
 ```shell

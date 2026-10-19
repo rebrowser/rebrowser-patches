@@ -1,8 +1,8 @@
 # Releasing rebrowser-patches
 
-This is the monthly runbook. Everything builds and tests from three inputs: an upstream version, the
-patches in `patches/`, and the scripts in `release/`. Publishing happens only in GitHub Actions through
-npm/PyPI trusted publishing (no tokens in the repo or the dev container).
+How a release is made. Everything builds and tests from three inputs: an upstream version, the patches in
+`patches/`, and the scripts in `release/`. Publishing happens only in GitHub Actions through npm/PyPI trusted
+publishing (no publish tokens anywhere else).
 
 Work happens in a scratch dir, never in the repo: set `REBROWSER_WORK_DIR` (default `~/.cache/rebrowser-patches`).
 
@@ -42,11 +42,17 @@ regresses beyond `tests/baselines/`. Known, issue-linked failures (today only `a
 live in the baselines. The `nonchromium` suite (Playwright on Firefox + WebKit) is opt-in locally; CI installs
 those browsers and runs it.
 
-## 4. Second-model review, then the PR
-Have a second model review the `src.patch` delta against the previous release (this is the code ~600k
-installs/month run). Then, **only if this run's request says to release**, push the branch and open the
-PR; CI (`.github/workflows/ci.yml`) runs the same build + tests on an x64 runner. Fix and re-push, up to
-three rounds, then stop. If not releasing this run, stop here with the artifacts and hand the commands over.
+Then check that no version already on npm or PyPI would get different contents (a forgotten `publishVersion`
+bump); versions that aren't published yet just show as pending:
+```
+node release/publish.mjs --manifest <work>/dist     # dry run: fails if npm has that version with another integrity
+node release/pypi-plan.mjs <work>/dist               # fails if PyPI has that version with other contents
+```
+
+## 4. Review, then the PR
+Review the `src.patch` delta against the previous release hunk by hunk (this is the code ~600k installs/month
+run). Then push the branch and open the PR; CI (`.github/workflows/ci.yml`) runs the same build + tests on an
+x64 runner.
 
 ## 5. Publish (CI)
 Merge the PR, then push the tag:
@@ -55,19 +61,27 @@ git tag v<cliVersion> && git push origin v<cliVersion>
 ```
 `.github/workflows/release.yml` builds, tests, then publishes in the `release` environment via OIDC:
 npm (5 packages, cores before wrappers, idempotent — a re-run resumes), PyPI (the wheels), and a GitHub
-Release. The python-driver core is embedded in the wheels and is not published to npm.
+Release. The python-driver core is embedded in the wheels and is not published to npm. PyPI gets only the wheels
+it doesn't have yet (`release/pypi-plan.mjs`). Wait until every job of the run is green; a failed job can be
+re-run, publishing resumes where it stopped.
 
-## 6. Mirror the drop-in repos (from the container, after publish)
+## 6. Mirror the drop-in repos (after the release workflow is green)
 ```
-node release/mirror.mjs --manifest <work>/dist --yes   # needs WEB_GITHUB_TOKEN
+GH_TOKEN=<token> node release/mirror.mjs --yes
 ```
-Pushes a per-version branch to each `rebrowser-<name>` repo. Existing branches are never force-pushed.
-Then it points each repo's default branch at its highest version branch, so the repo page shows the latest
-release. That needs `Administration: write` on the token and an admin role for its account; without them it
-prints a warning, and once they're granted `node release/mirror.mjs --default-branch-only --yes` catches up.
+Adds a per-version branch to each `rebrowser-<name>` repo: an "original" commit with the upstream package or
+source, then a "patched" commit with what was published. npm content comes from the registry, Python content
+from the release run's `python-source` artifact (the newest successful run for tag `v<cliVersion>`, or
+`--run <id>`). Existing branches are compared with what was published and never rewritten. Then each repo's
+default branch moves to its highest version branch. The token needs Contents, Workflows and Administration write
+on the five repos. Running it again is safe: it only does what is still missing.
 
 ## 7. Verify and close out
-Install from npm and PyPI into clean dirs and re-run `tests/run.mjs` against the published packages.
+Install from npm and PyPI into clean dirs and re-run `tests/run.mjs` against the published packages, and check
+the mirrors:
+```
+GH_TOKEN=<token> node release/mirror.mjs --check   # fails unless every branch is mirrored and every default branch is the newest
+```
 Update the README supported-versions table (in the PR), list the issues this release fixes, and flag the
 rebrowser.net docs page if its versions changed (that's a separate deploy).
 

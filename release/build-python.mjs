@@ -8,6 +8,7 @@ import { main, parse } from './lib/cli.mjs';
 import { capture, log, run, step } from './lib/exec.mjs';
 import { integrityOfFile, sha256OfFile } from './lib/integrity.mjs';
 import { defaultOutDir, ensureDir, exists, freshDir, repoPath, rmrf, workPath } from './lib/paths.mjs';
+import { writeSourceTars } from './lib/pysource.mjs';
 import { loadVersions } from './lib/versions.mjs';
 
 const usage = `Usage: node release/build-python.mjs <pyVersion> --driver-tgz <rebrowser-playwright-core-X.tgz> [--out <dir>] [--smoke]
@@ -21,7 +22,8 @@ python target <pyVersion> (e.g. 1.64.0):
   4. one 'python -m build --wheel' per wheel, with REBROWSER_DRIVER_TGZ=<--driver-tgz>
   5. assert the exact wheel set, and per wheel: driver/package/lib/coreBundle.js is byte-identical to
      the tarball's, driver package.json version == DRIVER_VERSION, renamed package, metadata
-Wheels and python-manifest.json go to --out (default <work>/dist). The build venv lives in <work>/py/venv-build.
+Wheels, python-manifest.json and the source the wheels were built from (python-src.tar: the prepared tree;
+python-orig.tar: the upstream tag) go to --out (default <work>/dist). The build venv lives in <work>/py/venv-build.
 If the python target has a "publishVersion" (re-release of the same upstream tag, X.Y.100+n), the wheels are
 versioned with it; the tag, build.patch and work paths stay keyed by <pyVersion>.
 --smoke: also pip-install the wheel for this machine into a fresh venv and import rebrowser_playwright.`;
@@ -190,10 +192,11 @@ main(async () => {
     fs.copyFileSync(path.join(dist, file), path.join(outDir, file));
     wheels.push({ file, sha256: sha256OfFile(path.join(outDir, file)), size: fs.statSync(path.join(outDir, file)).size });
   }
+  await step('save the source tree for the mirror', () => writeSourceTars(clone, outDir));
   const manifest = {
     distribution: entry.distribution,
     version: wheelVersion,
-    source: { repo: entry.repo, ref: entry.ref },
+    source: { repo: entry.repo, ref: entry.ref, commit: await capture('git', ['rev-parse', 'HEAD'], { cwd: clone }) },
     driver: { package: 'rebrowser-playwright-core', version: driverVersion, tgzIntegrity: integrityOfFile(driverTgz) },
     buildPatch: { path: path.relative(repoPath(), buildPatch), sha256: sha256OfFile(buildPatch) },
     wheels,

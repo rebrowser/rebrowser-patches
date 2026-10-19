@@ -66,7 +66,7 @@ const PACKAGES = {
 };
 
 const BUILD_ENV = {
-  NODE_ENV: 'development', // the container sets NODE_ENV=production, which makes npm skip devDependencies
+  NODE_ENV: 'development', // NODE_ENV=production in the environment would make npm skip devDependencies
   PUPPETEER_SKIP_DOWNLOAD: '1',
   PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1',
   CI: '1',

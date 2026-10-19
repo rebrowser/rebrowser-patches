@@ -6,7 +6,8 @@
   ],
   "set": {
     "name": "rebrowser-playwright-core",
-    "description": "A drop-in replacement for playwright-core patched with rebrowser-patches. It allows to pass modern automation detection tests."
+    "description": "A drop-in replacement for playwright-core patched with rebrowser-patches. It allows to pass modern automation detection tests.",
+    "homepage": "https://github.com/rebrowser/rebrowser-patches#readme"
   },
   "afterDescription": {
     "keywords": [
