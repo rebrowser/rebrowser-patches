@@ -35,6 +35,9 @@ jobs:
       - name: Preflight
         run: node release/doctor.mjs
 
+      - name: Unit tests (release tooling)
+        run: node --test 'release/test/*.test.mjs'
+
       - name: Build drop-in packages
         run: node release/build-packages.mjs
 

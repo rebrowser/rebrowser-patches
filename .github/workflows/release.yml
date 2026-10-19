@@ -5,8 +5,9 @@ name: release
 #
 # Normal release: push a tag `v<cliVersion>` (e.g. v1.1.0). The job builds, tests, then publishes only
 # the versions in release/versions.json that aren't already on the registry (idempotent, so a re-run
-# after a partial failure resumes). Mirroring the drop-in repos is done separately from the container
-# (release/mirror.mjs) and is intentionally not in this workflow.
+# after a partial failure resumes). Mirroring the drop-in repos (release/mirror.mjs) runs after this workflow
+# and is not part of it; build-test saves the Python source tree the wheels were built from as the
+# `python-source` artifact for it.
 #
 # Rollback: run the workflow manually (workflow_dispatch) with action=rollback, a package and a target
 # version; it moves that package's npm `latest` dist-tag back via OIDC. It never unpublishes.
@@ -74,17 +75,24 @@ jobs:
       - name: Stage artifacts
         run: |
           set -e
-          mkdir -p staged/npm staged/pypi
+          mkdir -p staged/npm staged/pypi staged/python python-source
           cp "$REBROWSER_WORK_DIR"/dist/manifest.json staged/npm/
           # only tarballs the manifest marks publishable (the Python-only driver core stays out)
           node -e "const m=require(process.argv[1]);for(const a of m.artifacts)if(a.publish!==false)console.log(a.file)" "$REBROWSER_WORK_DIR/dist/manifest.json" \
             | while read -r f; do cp "$REBROWSER_WORK_DIR/dist/$f" staged/npm/; done
           cp "$REBROWSER_WORK_DIR"/dist-py/*.whl staged/pypi/
-          ls staged/npm staged/pypi
+          cp "$REBROWSER_WORK_DIR"/dist-py/python-manifest.json staged/python/
+          cp "$REBROWSER_WORK_DIR"/dist-py/python-manifest.json "$REBROWSER_WORK_DIR"/dist-py/python-src.tar \
+            "$REBROWSER_WORK_DIR"/dist-py/python-orig.tar python-source/
+          ls staged/npm staged/pypi staged/python python-source
       - uses: actions/upload-artifact@v4
         with:
           name: release-artifacts
           path: staged
+      - uses: actions/upload-artifact@v4
+        with:
+          name: python-source
+          path: python-source
 
   publish-npm:
     needs: build-test
@@ -113,15 +121,25 @@ jobs:
     environment: release
     permissions:
       id-token: write   # OIDC for PyPI trusted publishing
+      contents: read
     steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
       - uses: actions/download-artifact@v4
         with:
           name: release-artifacts
           path: staged
+      # Upload only the wheels PyPI doesn't have; stop if PyPI has different contents under the same version.
+      - name: Plan the PyPI upload
+        id: plan
+        run: node release/pypi-plan.mjs staged/pypi --manifest staged/python/python-manifest.json --out staged/pypi-upload
       - name: Publish wheels to PyPI (OIDC)
+        if: steps.plan.outputs.upload == 'true'
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          packages-dir: staged/pypi
+          packages-dir: staged/pypi-upload
 
   github-release:
     needs: [publish-npm, publish-pypi]

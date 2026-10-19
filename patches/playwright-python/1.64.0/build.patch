@@ -1,14 +1,18 @@
 diff --git a/README.md b/README.md
-index b8af3c5..a112fcc 100644
+index b8af3c5..b88851a 100644
 --- a/README.md
 +++ b/README.md
-@@ -1,3 +1,14 @@
+@@ -1,3 +1,18 @@
 +# rebrowser-playwright
 +> ⚠️ This is the original [`playwright-python`](https://github.com/microsoft/playwright-python) patched with [`rebrowser-patches`](https://github.com/rebrowser/rebrowser-patches).
 +>
 +> 🕵️ The ultimate goal is to pass all automation detection tests presented in [`rebrowser-bot-detector`](https://github.com/rebrowser/rebrowser-bot-detector).
 +>
 +> 🪄 It's designed to be a drop-in replacement for the original `playwright` without changing your codebase. Each major and minor version of this repo matches the original repo, patch version could differ due to changes related to the patch itself.
++>
++> 📦 Install it with `pip install rebrowser-playwright` and import from `rebrowser_playwright` instead of `playwright`, e.g. `from rebrowser_playwright.sync_api import sync_playwright`. Everything below this box is the original playwright-python README.
++>
++> 🔍 On GitHub, each version branch has two commits, the original source and then the patched one, so the second commit shows exactly what changed. Release notes are in [rebrowser-patches releases](https://github.com/rebrowser/rebrowser-patches/releases).
 +>
 +> ☝️ Make sure to read: [Patches for Puppeteer and Playwright](https://rebrowser.net/docs/patches-for-puppeteer-and-playwright)
 +>
@@ -18,7 +22,7 @@ index b8af3c5..a112fcc 100644
  
  Playwright is a Python library to automate [Chromium](https://www.chromium.org/Home), [Firefox](https://www.mozilla.org/en-US/firefox/new/) and [WebKit](https://webkit.org/) browsers with a single API. Playwright delivers automation that is **ever-green**, **capable**, **reliable** and **fast**. [See how Playwright is better](https://playwright.dev/python).
 diff --git a/pyproject.toml b/pyproject.toml
-index 0e5e5db..d4749e2 100644
+index 0e5e5db..bfdf869 100644
 --- a/pyproject.toml
 +++ b/pyproject.toml
 @@ -1,16 +1,16 @@
@@ -41,14 +45,15 @@ index 0e5e5db..d4749e2 100644
  requires-python = ">=3.10"
  # Please when changing dependencies run the following commands to update requirements.txt:
  # - pip install uv==0.5.4
-@@ -33,27 +33,28 @@ classifiers = [
+@@ -33,27 +33,29 @@ classifiers = [
  ]
  
  [project.urls]
 -homepage = "https://github.com/Microsoft/playwright-python"
 -"Release notes" = "https://github.com/microsoft/playwright-python/releases"
 +homepage = "https://github.com/rebrowser/rebrowser-playwright-python"
-+"Release notes" = "https://github.com/rebrowser/rebrowser-playwright-python/releases"
++"Release notes" = "https://github.com/rebrowser/rebrowser-patches/releases"
++Issues = "https://github.com/rebrowser/rebrowser-patches/issues"
  
  [project.scripts]
 -playwright = "playwright.__main__:main"

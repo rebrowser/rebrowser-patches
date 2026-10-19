@@ -51,8 +51,8 @@ async function collect(release) {
   if (release) {
     add('npm >= 11.5.1 (OIDC publish)', npm && cmp(npm, '11.5.1') >= 0, `npm ${npm}`);
     add('npm >= 11.21 (OIDC dist-tag)', npm && cmp(npm, '11.21.0') >= 0, `npm ${npm}`, false);
-    const token = process.env.WEB_GITHUB_TOKEN || process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
-    add('GitHub token present', !!token, token ? 'env token set (not printed)' : 'set WEB_GITHUB_TOKEN for push/mirror', true);
+    const token = process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
+    add('GitHub token present', !!token, token ? 'env token set (not printed)' : 'set GH_TOKEN for push/mirror', true);
     if (token) {
       let who = null;
       try { const r = await fetch('https://api.github.com/user', { headers: { Authorization: `Bearer ${token}` } }); who = r.ok ? (await r.json()).login : `HTTP ${r.status}`; } catch (e) { who = e.message; }

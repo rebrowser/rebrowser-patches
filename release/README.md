@@ -10,8 +10,11 @@ repo). Every script has `--help`, prints a one-line summary and exits non-zero o
 | `port.mjs <pkg> <ver> [--from V] [--ref R]` | shallow-fetch both refs, apply the old `src.patch`, cherry-pick onto the new ref (conflict: prints files + worktree, exit 2; resolve, `git add`, re-run with `--continue`), then install, type-check, clean-build original and patched, require original build == npm tarball, write `{src,lib}.patch` to `--out`, verify tarball + patches == patched build |
 | `port.mjs <pkg> <ver> --regen [--write]` | same build + verify stage for a version whose `src.patch` already exists; compares with the repo's patches, `--write` overwrites them |
 | `build-packages.mjs [--target pkg@ver]... [--out dir]` | npm tarball + patches + `templates/` transform -> `rebrowser-*` tarballs, the CLI tarball and `manifest.json` (no source build) |
-| `build-python.mjs <pyVer> --driver-tgz <tgz> [--out dir] [--smoke]` | playwright-python tag + `patches/playwright-python/<pyVer>/build.patch` + the patched core tarball -> all wheels, with assertions, `python-manifest.json` |
-| `publish.mjs`, `mirror.mjs`, `doctor.mjs` | CI publish, mirror sync, preflight (separate owner) |
+| `build-python.mjs <pyVer> --driver-tgz <tgz> [--out dir] [--smoke]` | playwright-python tag + `patches/playwright-python/<pyVer>/build.patch` + the patched core tarball -> all wheels, with assertions, `python-manifest.json`, and the source they were built from (`python-src.tar`, `python-orig.tar`) |
+| `publish.mjs [--manifest dir] [--yes]` | npm publish in CI (idempotent); without `--yes` a dry run that fails if a version on npm has a different integrity |
+| `pypi-plan.mjs <wheel-dir> [--out dir]` | which wheels PyPI still needs: skips ones with the same contents (`RECORD`), fails if PyPI has different contents under the same version |
+| `mirror.mjs [--run id] [--yes \| --check]` | after a release: per-version branches in the drop-in repos from the published packages (npm) and the run's `python-source` artifact; `--check` fails unless all are mirrored and default branches are the newest |
+| `doctor.mjs` | preflight |
 
 Commands in order (one release):
 
@@ -94,11 +97,11 @@ code loads that name).
 
 ## Notes
 
-- Container has `NODE_ENV=production`; the build steps override it. Puppeteer's monorepo is installed with
+- The build steps set `NODE_ENV=development` (with `production`, npm skips devDependencies). Puppeteer's monorepo is installed with
   `npx -y npm@11`. One port/regen at a time per upstream repo (lock file in `<work>/src/`); RAM is tight.
 - `port.mjs` never writes into `patches/` unless `--regen --write`; it prints the `cp` command instead.
 - `lib/` holds the shared helpers (exec with logs, registry/`npm pack`, unified-diff normalization, npm-style
-  integrity); `lib/check_wheel.py` is the per-wheel assertion helper.
+  integrity); `lib/check_wheel.py` is the per-wheel assertion helper. Unit tests: `node --test 'release/test/*.test.mjs'`.
 
 `build-packages.mjs` also checks the `rebrowser-patches` package contents (`release/lib/clipack.mjs`): it
 must ship exactly `scripts/`, the metadata files, and `lib.patch` + `src.patch` for every puppeteer-core /
