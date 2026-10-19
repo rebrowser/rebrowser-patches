@@ -253,7 +253,7 @@ async function buildOne({ templateName, upstream, version, publishVersion = vers
 
 /**
  * The version a target is published as: its "publishVersion" for a same-version re-release, else "version".
- * A re-release keeps major.minor and uses patch 100+n (RELEASING.md "Re-release"), so it sorts above every
+ * A re-release keeps major.minor and uses patch 100+n, so it sorts above every
  * upstream X.Y.z patch release and never collides with one.
  */
 function checkPublishVersion(target) {

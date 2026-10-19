@@ -209,6 +209,11 @@ const puppeteer = addExtra(rebrowserPuppeteer)
 ```
 Be careful with `puppeteer-extra-plugin-stealth`: its evasions override browser internals from JavaScript, and that is detectable on its own. On [rebrowser-bot-detector](https://bot-detector.rebrowser.net/) rebrowser-puppeteer with no plugins comes out clean, while adding the stealth plugin turns `nativeTampering` and `workerConsistency` red.
 
+## Releases and versions
+- Every package is built from this repo and published by GitHub Actions with npm and PyPI trusted publishing, so npm shows provenance for each version. Release notes are in [GitHub releases](https://github.com/rebrowser/rebrowser-patches/releases).
+- The drop-in packages follow the upstream version. A version like `25.14.101` is a re-release of upstream `25.14.0` with our fixes (patch numbers from 100 up), so it never collides with an upstream release.
+- In each source mirror ([rebrowser-puppeteer](https://github.com/rebrowser/rebrowser-puppeteer), [rebrowser-playwright](https://github.com/rebrowser/rebrowser-playwright), [rebrowser-playwright-python](https://github.com/rebrowser/rebrowser-playwright-python) and the `-core` ones), every version has its own branch with two commits: the original package, then the patched one. The second commit's diff is exactly what changed.
+
 ## Follow the project
 We're currently developing more patches to improve web automation transparency, which will be released in this repo soon. Please support the project by clicking ⭐️ star or watch button.
 

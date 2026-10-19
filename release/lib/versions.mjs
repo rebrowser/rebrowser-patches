@@ -1,4 +1,4 @@
-// Access to release/versions.json (schema documented in release/README.md).
+// Access to release/versions.json.
 import fs from 'node:fs';
 import { repoPath } from './paths.mjs';
 

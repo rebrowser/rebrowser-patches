@@ -24,7 +24,7 @@ function currentOf(pkg) {
 }
 
 // After a re-release (publishVersion X.Y.100+n), later upstream X.Y.z patch versions are skipped: publishing one would
-// put a lower version on `latest`. Port the next minor instead (RELEASING.md "Re-release").
+// put a lower version on `latest`. Port the next minor instead.
 function statusOf(cmp, current, latestVersion) {
   if (cmp > 0 && current?.publishVersion && latestVersion.split('.').slice(0, 2).join('.') === current.version.split('.').slice(0, 2).join('.')) {
     return `skip (the ${current.version.split('.').slice(0, 2).join('.')} line is closed by the ${current.publishVersion} re-release)`;
