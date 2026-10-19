@@ -478,16 +478,18 @@
            session.send("Runtime.addBinding", { name: kBindingName2 }),
            session.send("Page.enable"),
            session.send("Page.addScriptToEvaluateOnNewDocument", { source: `
-@@ -44782,6 +45056,13 @@
+@@ -44782,6 +45056,15 @@
            if (proxyBypassRules.length > 0)
              chromeArguments.push(`--proxy-bypass-list=${proxyBypassRules.join(";")}`);
          }
 +        if (process.env["REBROWSER_PATCHES_WEBDRIVER_FIX"] !== "0") {
++          const featuresPrefix = "--disable-features=";
++          const patchedArguments = chromeArguments.filter((arg2) => arg2 !== "--disable-ipc-flooding-protection" && arg2 !== "--disable-popup-blocking").map((arg2) => arg2.startsWith(featuresPrefix) ? featuresPrefix + arg2.substring(featuresPrefix.length).split(",").filter((f) => f !== "ThirdPartyStoragePartitioning").join(",") : arg2);
 +          const blinkPrefix = "--disable-blink-features=";
 +          const userBlinkFeatures = args.filter((arg2) => arg2.startsWith(blinkPrefix)).flatMap((arg2) => arg2.substring(blinkPrefix.length).split(",")).map((f) => f.trim()).filter(Boolean);
-+          chromeArguments.push(blinkPrefix + [.../* @__PURE__ */ new Set(["AutomationControlled", ...userBlinkFeatures])].join(","));
-+          chromeArguments.push(...args.filter((arg2) => !arg2.startsWith(blinkPrefix)));
-+          return chromeArguments;
++          patchedArguments.push(blinkPrefix + [.../* @__PURE__ */ new Set(["AutomationControlled", ...userBlinkFeatures])].join(","));
++          patchedArguments.push(...args.filter((arg2) => !arg2.startsWith(blinkPrefix)));
++          return patchedArguments;
 +        }
          chromeArguments.push(...args);
          return chromeArguments;

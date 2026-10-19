@@ -661,16 +661,17 @@ index 1ddc8f5..7f63437 100644
  
  /**
 diff --git a/src/node/ChromeLauncher.ts b/src/node/ChromeLauncher.ts
-index d10991a..db3e802 100644
+index d10991a..584ee55 100644
 --- a/src/node/ChromeLauncher.ts
 +++ b/src/node/ChromeLauncher.ts
-@@ -175,6 +175,23 @@ export class ChromeLauncher extends BrowserLauncher {
+@@ -175,6 +175,24 @@ export class ChromeLauncher extends BrowserLauncher {
        removeMatchingFlags(options.args, '--disable-features');
      }
  
 +    // rebrowser-patches: hide navigator.webdriver with --disable-blink-features=AutomationControlled,
-+    // merged with the user's own --disable-blink-features, and drop --enable-automation (below).
-+    // REBROWSER_PATCHES_WEBDRIVER_FIX=0 turns both off.
++    // merged with the user's own --disable-blink-features, and drop the flags below that pages can notice
++    // (--enable-automation, --disable-ipc-flooding-protection, --disable-popup-blocking).
++    // REBROWSER_PATCHES_WEBDRIVER_FIX=0 turns all of it off.
 +    const webdriverFix = process.env['REBROWSER_PATCHES_WEBDRIVER_FIX'] !== '0';
 +    const userDisabledBlinkFeatures = getFeatures(
 +      '--disable-blink-features',
@@ -688,7 +689,17 @@ index d10991a..db3e802 100644
      const turnOnExperimentalFeaturesForTesting =
        process.env['PUPPETEER_TEST_EXPERIMENTAL_CHROME_FEATURES'] === 'true';
  
-@@ -238,7 +255,8 @@ export class ChromeLauncher extends BrowserLauncher {
+@@ -232,13 +250,16 @@ export class ChromeLauncher extends BrowserLauncher {
+       '--disable-dev-shm-usage',
+       '--disable-hang-monitor',
+       '--disable-infobars',
+-      '--disable-ipc-flooding-protection',
+-      '--disable-popup-blocking',
++      // rebrowser-patches: a normal Chrome ignores history updates past 200 in 10 s and blocks popups opened
++      // without a click; pages can test both
++      webdriverFix ? '' : '--disable-ipc-flooding-protection',
++      webdriverFix ? '' : '--disable-popup-blocking',
+       '--disable-prompt-on-repost',
        '--disable-renderer-backgrounding',
        '--disable-search-engine-choice-screen',
        '--disable-sync',
@@ -698,7 +709,7 @@ index d10991a..db3e802 100644
        '--export-tagged-pdf',
        '--force-color-profile=srgb',
        '--generate-pdf-document-outline',
-@@ -248,6 +266,9 @@ export class ChromeLauncher extends BrowserLauncher {
+@@ -248,6 +269,9 @@ export class ChromeLauncher extends BrowserLauncher {
        '--use-mock-keychain',
        `--disable-features=${disabledFeatures.join(',')}`,
        `--enable-features=${enabledFeatures.join(',')}`,

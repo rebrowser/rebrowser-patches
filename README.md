@@ -95,8 +95,9 @@ By default, Puppeteer adds `//# sourceURL=pptr:...` to every script in `page.eva
 
 The Puppeteer patch adds no sourceURL at all, so frames show `<anonymous>` like any other injected script. The Playwright patch renames the helper to a short name picked at random per process and shifts its line numbers, so there's no fixed name or position to look for. You can adjust it via environment variable:
 ```shell
-# Puppeteer only: use a sourceURL of your choice
-REBROWSER_PATCHES_SOURCE_URL=jquery.min.js
+# Puppeteer only: use a sourceURL of your choice. Prefer a full URL: a bare file name such as
+# jquery.min.js shows up in stack traces as a script with no address, which detectors can flag
+REBROWSER_PATCHES_SOURCE_URL=https://example.com/js/app.js
 # use 0 to completely disable this patch (Puppeteer and Playwright)
 REBROWSER_PATCHES_SOURCE_URL=0
 ```
@@ -105,6 +106,11 @@ REBROWSER_PATCHES_SOURCE_URL=0
 Chrome launched by Puppeteer or Playwright reports `navigator.webdriver = true` &mdash; an obvious automation flag that many anti-bot systems check. This patch adds `--disable-blink-features=AutomationControlled` to the default launch arguments so `navigator.webdriver` stays `false`. Any `--disable-blink-features=...` you pass yourself is merged in, not overwritten.
 
 Puppeteer also passes `--enable-automation`, which shows the "Chrome is being controlled by automated test software" bar. The Puppeteer patch drops it (Playwright stopped passing it in 1.64).
+
+Both libraries also launch Chrome with switches that a page can notice, so the patches drop them too:
+- `--disable-popup-blocking`: a page could open popups without a click. Popups opened by `page.click()` and `page.evaluate()` still work, because both count as a user gesture.
+- `--disable-ipc-flooding-protection`: Chrome normally ignores history updates past 200 in 10 seconds; with the switch, a page sees all of them applied.
+- Playwright only, `ThirdPartyStoragePartitioning` in `--disable-features`: an iframe from another site that embeds a frame from the page's own site could read the page's `localStorage`. Without it, third-party storage is partitioned as in a normal Chrome.
 ```shell
 # use 0 to disable this patch and keep the library's default behavior
 REBROWSER_PATCHES_WEBDRIVER_FIX=0

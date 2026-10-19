@@ -7,8 +7,11 @@
 //                page-visible functions (must not name rebrowser-patches)
 //   globals:     every global that appears on window (main frame and a same-origin iframe, across a navigation)
 //                while the library evaluates, waits for selectors and reads the DOM
+//   flags:       what the default launch switches show to a page (leak-flags.html measures it on load, before any
+//                evaluate, since evaluate grants user activation): popups without a click, history updates past 200,
+//                unpartitioned third-party storage
 // usage: node leaks.mjs <importName> <pptr|pw> <chromePath> <url>
-// Prints one JSON line { stack, commandLine, binding, globals }. Exit 1 on failure.
+// Prints one JSON line { stack, commandLine, binding, globals, flags }. Exit 1 on failure.
 const [lib, family, executablePath, url] = process.argv.slice(2)
 const sleep = ms => new Promise(r => setTimeout(r, ms))
 const args = ['--no-sandbox', '--disable-dev-shm-usage']
@@ -54,7 +57,15 @@ try {
     await sleep(300)
     for (const f of [page3, child].filter(Boolean)) for (const k of JSON.parse(await f.$eval('#__detector', el => el.value) || '[]')) globals.add(k)
   }
-  out = { stack, commandLine, binding, globals: [...globals] }
+  // a fourth page measures the launch switches itself on load
+  const page4 = family === 'pptr' ? await browser.newPage() : await (await browser.newContext({ viewport: null })).newPage()
+  await page4.goto(url.replace(/[^/]*$/, 'leak-flags.html'), { waitUntil: 'load', timeout: 30000 })
+  let flags = null
+  for (let i = 0; i < 60 && !flags; i++) {
+    await sleep(250)
+    flags = JSON.parse(await page4.$eval('#__flags', el => el.value) || 'null')
+  }
+  out = { stack, commandLine, binding, globals: [...globals], flags }
 } catch (e) {
   console.error('FAILED', lib, String((e && e.message) || e).slice(0, 400))
 }
