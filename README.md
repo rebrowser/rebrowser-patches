@@ -108,9 +108,11 @@ Chrome launched by Puppeteer or Playwright reports `navigator.webdriver = true` 
 Puppeteer also passes `--enable-automation`, which shows the "Chrome is being controlled by automated test software" bar. The Puppeteer patch drops it (Playwright stopped passing it in 1.64).
 
 Both libraries also launch Chrome with switches that a page can notice, so the patches drop them too:
-- `--disable-popup-blocking`: a page could open popups without a click. Popups opened by `page.click()` and `page.evaluate()` still work, because both count as a user gesture.
-- `--disable-ipc-flooding-protection`: Chrome normally ignores history updates past 200 in 10 seconds; with the switch, a page sees all of them applied.
-- Playwright only, `ThirdPartyStoragePartitioning` in `--disable-features`: an iframe from another site that embeds a frame from the page's own site could read the page's `localStorage`. Without it, third-party storage is partitioned as in a normal Chrome.
+- `--disable-popup-blocking`: a page could open popups without a click. Now Chrome blocks popups the way it does for a real user: `page.click()` and `page.evaluate()` count as a click, so the first popup they open still opens, but a second one from the same click, one opened after a few seconds or one opened by the page on load is blocked. To bring the old behavior back, pass `--disable-popup-blocking` in `args`.
+- `--disable-ipc-flooding-protection`: Chrome normally ignores history updates past 200 in 10 seconds; with the switch, a page sees all of them applied. Only pages that change the URL more than ~20 times a second notice the difference. Pass the switch in `args` to keep it.
+- Playwright only, `ThirdPartyStoragePartitioning` in `--disable-features`: an iframe from another site that embeds a frame from the page's own site could read the page's `localStorage`. Now third-party storage is partitioned as in a normal Chrome. Playwright disabled partitioning so that `localStorage` seeded with `storageState` also shows up when that site is embedded in another site's page ([microsoft/playwright#32230](https://github.com/microsoft/playwright/issues/32230)); if you rely on that, set `REBROWSER_PATCHES_WEBDRIVER_FIX=0` and pass `--disable-blink-features=AutomationControlled` in `args` yourself, which keeps `navigator.webdriver` hidden. Passing your own `--disable-features=ThirdPartyStoragePartitioning` instead would replace Playwright's whole `--disable-features` list (Chrome keeps only the last one).
+
+This applies to Chrome launched with `puppeteer.launch()` and Playwright's `chromium.launch()` / `launchPersistentContext()`; Playwright's Android and Electron launchers are unchanged.
 ```shell
 # use 0 to disable this patch and keep the library's default behavior
 REBROWSER_PATCHES_WEBDRIVER_FIX=0
