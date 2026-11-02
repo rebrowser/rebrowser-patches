@@ -1,0 +1,721 @@
+diff --git a/src/cdp/ExecutionContext.ts b/src/cdp/ExecutionContext.ts
+index 8d6da1e..644490e 100644
+--- a/src/cdp/ExecutionContext.ts
++++ b/src/cdp/ExecutionContext.ts
+@@ -39,6 +39,10 @@ import {
+   valueFromPrimitiveRemoteObject,
+ } from './utils.js';
+ 
++// rebrowser-patches: isolated world used to look up main-world context ids; one random name per process
++const rebrowserLookupWorldName = [...Array(Math.floor(Math.random() * (10 + 1)) + 10)].map(() => Math.random().toString(36)[2]).join('');
++let rebrowserFallbackWarned = false;
++
+ /**
+  * @internal
+  */
+@@ -86,6 +90,7 @@ export class ExecutionContext
+   #client: CDPSession;
+   #world: IsolatedWorld;
+   #id: number;
++  _frameId: any;
+   #name?: string;
+ 
+   readonly #disposables = new DisposableStack();
+@@ -105,16 +110,22 @@ export class ExecutionContext
+     if (contextPayload.name) {
+       this.#name = contextPayload.name;
+     }
++    // rebrowser-patches: keep frameId to use later
++    if (contextPayload.auxData?.frameId) {
++      this._frameId = contextPayload.auxData?.frameId;
++    }
+     const clientEmitter = this.#disposables.use(new EventEmitter(this.#client));
+     clientEmitter.on('Runtime.bindingCalled', this.#onBindingCalled.bind(this));
+-    clientEmitter.on('Runtime.executionContextDestroyed', async event => {
+-      if (event.executionContextId === this.#id) {
++    if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE'] === '0') {
++      clientEmitter.on('Runtime.executionContextDestroyed', async event => {
++        if (event.executionContextId === this.#id) {
++          this[disposeSymbol]();
++        }
++      });
++      clientEmitter.on('Runtime.executionContextsCleared', async () => {
+         this[disposeSymbol]();
+-      }
+-    });
+-    clientEmitter.on('Runtime.executionContextsCleared', async () => {
+-      this[disposeSymbol]();
+-    });
++      });
++    }
+     clientEmitter.on('Runtime.consoleAPICalled', this.#onConsoleAPI.bind(this));
+     clientEmitter.on(CDPSessionEvent.Disconnected, () => {
+       this[disposeSymbol]();
+@@ -177,7 +188,23 @@ export class ExecutionContext
+     event: Protocol.Runtime.BindingCalledEvent,
+   ): Promise<void> {
+     if (event.executionContextId !== this.#id) {
+-      return;
++      // rebrowser-patches: without Runtime events a main world learns its id only when it is first used, so a
++      // Puppeteer binding call (JSON payload) may come from it before that. Acquire the id and check again.
++      if (
++        this.#id !== -1 ||
++        process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE'] === '0' ||
++        !event.payload.startsWith('{')
++      ) {
++        return;
++      }
++      try {
++        await this.acquireContextId();
++      } catch {
++        return;
++      }
++      if (event.executionContextId !== this.#id) {
++        return;
++      }
+     }
+ 
+     let payload: BindingPayload;
+@@ -369,6 +396,233 @@ export class ExecutionContext
+     return await this.#evaluate(false, pageFunction, ...args);
+   }
+ 
++  // rebrowser-patches: alternative to dispose
++  clear(newId: any) {
++    this.#id = newId;
++    this.#bindings = new Map();
++    this.#bindingsInstalled = false;
++    this.#puppeteerUtil = undefined;
++  }
++  async __re__getMainWorld({ client, frameId, isWorker = false }: any) {
++    // rebrowser-patches: learn the main world's context id without running anything in the page, so there is
++    // nothing for page scripts to notice. Only if that fails (e.g. Chrome changes its object id format), fall back to
++    // the binding handshake.
++    try {
++      const contextId = await this.__re__getMainWorldIdByObject({ client, frameId, isWorker });
++      if (contextId)
++        return contextId;
++    } catch (error) {
++      process.env['REBROWSER_PATCHES_DEBUG'] && console.log('[rebrowser-patches][getMainWorld] object lookup failed, using a binding:', error);
++    }
++    if (!rebrowserFallbackWarned) {
++      rebrowserFallbackWarned = true;
++      console.warn('[rebrowser-patches] could not look up the page\'s context id without touching the page; falling back to a binding handshake that page scripts can notice. Please report this with your Chrome version. REBROWSER_PATCHES_RUNTIME_FIX_MODE=alwaysIsolated avoids it.');
++    }
++    return this.__re__getMainWorldByBinding({ client, frameId, isWorker });
++  }
++  // A worker evaluates `this` in its only context. A frame reads `document` in an isolated world and resolves that
++  // node again without a context, which lands in the frame's main world. Either way the remote object id is
++  // "<isolate>.<contextId>.<id>".
++  async __re__getMainWorldIdByObject({ client, frameId, isWorker }: any) {
++    const objectGroup = 'g' + Math.random().toString(36).slice(2);
++    let objectId: string | undefined;
++    try {
++      if (isWorker) {
++        objectId = (await client.send('Runtime.evaluate', { expression: 'this', objectGroup })).result.objectId;
++      } else {
++        const { executionContextId } = await client.send('Page.createIsolatedWorld', { frameId, worldName: rebrowserLookupWorldName, grantUniveralAccess: true });
++        const { result } = await client.send('Runtime.evaluate', { expression: 'document', contextId: executionContextId, objectGroup });
++        const { node } = await client.send('DOM.describeNode', { objectId: result.objectId });
++        objectId = (await client.send('DOM.resolveNode', { backendNodeId: node.backendNodeId, objectGroup })).object.objectId;
++      }
++    } finally {
++      client.send('Runtime.releaseObjectGroup', { objectGroup }).catch(() => {});
++    }
++    const match = /^-?\d+\.(\d+)\.\d+$/.exec(objectId || '');
++    process.env['REBROWSER_PATCHES_DEBUG'] && console.log(`[rebrowser-patches][getMainWorldIdByObject] frameId = ${frameId}, objectId = ${objectId}`);
++    return match ? Number(match[1]) : undefined;
++  }
++  async __re__getMainWorldByBinding({ client, frameId, isWorker = false }: any) {
++    let contextId: any;
++    let identifier: any;
++
++    // random name to make it harder to detect for any 3rd party script by watching window object and events
++    const randomName = [...Array(Math.floor(Math.random() * (10 + 1)) + 10)].map(() => Math.random().toString(36)[2]).join('');
++    process.env['REBROWSER_PATCHES_DEBUG'] && console.log(`[rebrowser-patches][getMainWorld] binding name = ${randomName}`);
++
++    // add the binding
++    await client.send('Runtime.addBinding', {
++      name: randomName,
++    });
++
++    // listen for 'Runtime.bindingCalled' event
++    const bindingCalledHandler = ({ name, payload, executionContextId }: any) => {
++      process.env['REBROWSER_PATCHES_DEBUG'] && console.log('[rebrowser-patches][bindingCalledHandler]', {
++        name,
++        payload,
++        executionContextId
++      });
++      if (contextId > 0) {
++        // already acquired the id
++        return;
++      }
++      if (name !== randomName) {
++        // ignore irrelevant bindings
++        return;
++      }
++      if (payload !== frameId) {
++        // ignore irrelevant frames
++        return;
++      }
++      contextId = executionContextId;
++      // remove this listener
++      client.off('Runtime.bindingCalled', bindingCalledHandler);
++    };
++    client.on('Runtime.bindingCalled', bindingCalledHandler);
++
++    if (isWorker) {
++      // workers don't support `Page.addScriptToEvaluateOnNewDocument` and `Page.createIsolatedWorld`, but there are no iframes inside of them, so it's safe to just use Runtime.evaluate
++      await client.send('Runtime.evaluate', {
++        expression: `this['${randomName}']('${frameId}')`,
++      });
++    } else {
++      // we could call the binding right from `addScriptToEvaluateOnNewDocument`, but this way it will be called in all existing frames and it's hard to distinguish children from the parent
++      // use `window`, not `self`: pages can reassign `self` (or make it throw, e.g. LavaMoat scuttling), `window` is unforgeable
++      ({ identifier } = await client.send('Page.addScriptToEvaluateOnNewDocument', {
++        source: `document.addEventListener('${randomName}', (e) => window['${randomName}'](e.detail.frameId))`,
++        runImmediately: true,
++      }));
++
++      // create new isolated world for this frame
++      const createIsolatedWorldResult = await client.send('Page.createIsolatedWorld', {
++        frameId,
++        // use randomName for worldName to distinguish from normal utility world
++        worldName: randomName,
++        grantUniveralAccess: true,
++      });
++
++      // emit event in the specific frame from the isolated world
++      await client.send('Runtime.evaluate', {
++        expression: `document.dispatchEvent(new CustomEvent('${randomName}', { detail: { frameId: '${frameId}' } }))`,
++        contextId: createIsolatedWorldResult.executionContextId,
++      });
++    }
++
++    process.env['REBROWSER_PATCHES_DEBUG'] && console.log(`[rebrowser-patches][getMainWorld] result:`, { contextId });
++    // don't leave the handshake behind: a native function with a random name on the global object is easy to spot
++    client.send('Runtime.removeBinding', { name: randomName }).catch(() => {});
++    if (contextId)
++      client.send('Runtime.evaluate', { expression: `delete this['${randomName}']`, contextId }).catch(() => {});
++    if (identifier)
++      client.send('Page.removeScriptToEvaluateOnNewDocument', { identifier }).catch(() => {});
++    return contextId;
++  }
++  async __re__getIsolatedWorld({ client, frameId, worldName }: any) {
++    const createIsolatedWorldResult = await client.send('Page.createIsolatedWorld', {
++      frameId,
++      worldName,
++      grantUniveralAccess: true,
++    });
++    process.env['REBROWSER_PATCHES_DEBUG'] && console.log(`[rebrowser-patches][getIsolatedWorld] result:`, createIsolatedWorldResult);
++    return createIsolatedWorldResult.executionContextId;
++  }
++  // rebrowser-patches: get context id if it's missing
++  async acquireContextId(tryCount = 1): Promise<any> {
++    if (this.#id > 0) {
++      return
++    }
++
++    const fixMode = process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE'] || 'addBinding'
++    process.env['REBROWSER_PATCHES_DEBUG'] && console.log(`[rebrowser-patches][acquireContextId] id = ${this.#id}, name = ${this.#name}, fixMode = ${fixMode}, tryCount = ${tryCount}`)
++
++    let contextId: any
++    let tryAgain = true;
++    let errorMessage = 'N/A'
++    if (fixMode === 'addBinding') {
++      try {
++        if (this.#id === -2) {
++          // isolated world
++          contextId = await this.__re__getIsolatedWorld({
++            client: this.#client,
++            frameId: this._frameId,
++            worldName: this.#name,
++          })
++        } else {
++          // main world
++          contextId = await this.__re__getMainWorld({
++            client: this.#client,
++            frameId: this._frameId,
++            isWorker: this.#id === -3,
++          })
++        }
++      } catch (error: any) {
++        process.env['REBROWSER_PATCHES_DEBUG'] && console.error('[rebrowser-patches][acquireContextId] error:', error)
++        errorMessage = error.message
++        if (error instanceof Error) {
++          if (
++            error.message.includes('No frame for given id found') ||
++            error.message.includes('Target closed') ||
++            error.message.includes('Session closed')
++          ) {
++            // target doesn't exist anymore, don't try again
++            tryAgain = false
++          }
++        }
++
++        this.#logger?.(DEBUG_PREFIXES.error)?.(error);
++      }
++    } else if (fixMode === 'alwaysIsolated') {
++      if (this.#id === -3) {
++        throw new Error('[rebrowser-patches] web workers are not supported in alwaysIsolated mode')
++      }
++
++      contextId = await this.__re__getIsolatedWorld({
++        client: this.#client,
++        frameId: this._frameId,
++        worldName: this.#name,
++      })
++    } else if (fixMode === 'enableDisable') {
++      const executionContextCreatedHandler = ({ context }: any) => {
++        process.env['REBROWSER_PATCHES_DEBUG'] && console.log(`[rebrowser-patches][executionContextCreated] this.#id = ${this.#id}, name = ${this.#name}, contextId = ${contextId}, event.context.id = ${context.id}`)
++
++        if (contextId > 0) {
++          // already acquired the id
++          return
++        }
++
++        if (this.#id === -1) {
++          // main world of this frame
++          if (context.auxData && context.auxData['isDefault'] && context.auxData['frameId'] === this._frameId) {
++            contextId = context.id
++          }
++        } else if (this.#id === -2) {
++          // utility world of this frame
++          if (this.#name === context.name && context.auxData?.['frameId'] === this._frameId) {
++            contextId = context.id
++          }
++        } else if (this.#id === -3) {
++          // web worker
++          contextId = context.id
++        }
++      }
++
++      this.#client.on('Runtime.executionContextCreated', executionContextCreatedHandler)
++      await this.#client.send('Runtime.enable')
++      await this.#client.send('Runtime.disable')
++      this.#client.off('Runtime.executionContextCreated', executionContextCreatedHandler)
++    }
++
++    if (!contextId) {
++      if (!tryAgain || tryCount >= 3) {
++        throw new Error(`[rebrowser-patches] acquireContextId failed (tryAgain = ${tryAgain}, tryCount = ${tryCount}), errorMessage: ${errorMessage}`)
++      }
++      process.env['REBROWSER_PATCHES_DEBUG'] && console.log(`[rebrowser-patches][acquireContextId] failed, try again (tryCount = ${tryCount})`)
++      return this.acquireContextId(tryCount + 1)
++    }
++
++    this.#id = contextId
++  }
++
+   async #evaluate<
+     Params extends unknown[],
+     Func extends EvaluateFunc<Params> = EvaluateFunc<Params>,
+@@ -393,6 +647,13 @@ export class ExecutionContext
+     pageFunction: Func | string,
+     ...args: Params
+   ): Promise<HandleFor<Awaited<ReturnType<Func>>> | Awaited<ReturnType<Func>>> {
++    // rebrowser-patches: context id is missing, acquire it and try again
++    if (this.#id < 0) {
++      await this.acquireContextId()
++      // @ts-ignore
++      return this.#evaluate(returnByValue, pageFunction, ...args)
++    }
++
+     const sourceUrlComment = getSourceUrlComment(
+       getSourcePuppeteerURLIfAvailable(pageFunction)?.toString() ??
+         PuppeteerURL.INTERNAL_URL,
+diff --git a/src/cdp/FrameManager.ts b/src/cdp/FrameManager.ts
+index b58d205..6792790 100644
+--- a/src/cdp/FrameManager.ts
++++ b/src/cdp/FrameManager.ts
+@@ -32,6 +32,7 @@ import {FrameTree} from './FrameTree.js';
+ import {IsolatedWorld} from './IsolatedWorld.js';
+ import {MAIN_WORLD, PUPPETEER_WORLD} from './IsolatedWorlds.js';
+ import {NetworkManager} from './NetworkManager.js';
++import {CDP_BINDING_PREFIX} from './utils.js';
+ import type {CdpPage} from './Page.js';
+ import type {CdpTarget} from './Target.js';
+ 
+@@ -214,6 +215,10 @@ export class FrameManager extends EventEmitter<FrameManagerEvents> {
+       this.#onFrameStoppedLoading(event.frameId);
+     });
+     session.on('Runtime.executionContextCreated', async event => {
++      if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE'] !== '0') {
++        // rebrowser-patches: ignore default logic
++        return
++      }
+       await this.#frameTreeHandled?.valueOrThrow();
+       this.#onExecutionContextCreated(event.context, session);
+     });
+@@ -242,9 +247,17 @@ export class FrameManager extends EventEmitter<FrameManagerEvents> {
+           this.#frameTreeHandled?.resolve();
+         }),
+         client.send('Page.setLifecycleEventsEnabled', {enabled: true}),
+-        client.send('Runtime.enable').then(() => {
+-          return this.#createIsolatedWorld(client, UTILITY_WORLD_NAME);
+-        }),
++        (() => {
++          // rebrowser-patches: skip Runtime.enable
++          if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE'] !== '0') {
++            process.env['REBROWSER_PATCHES_DEBUG'] && console.log('[rebrowser-patches][FrameManager] initialize')
++            return this.#createIsolatedWorld(client, UTILITY_WORLD_NAME)
++          }
++
++          return client.send('Runtime.enable').then(() => {
++            return this.#createIsolatedWorld(client, UTILITY_WORLD_NAME);
++          })
++        })(),
+         ...(frame
+           ? Array.from(this.#scriptsToEvaluateOnNewDocument.values())
+           : []
+@@ -256,6 +269,31 @@ export class FrameManager extends EventEmitter<FrameManagerEvents> {
+         }),
+         this.#page.browser().isIssuesEnabled() && client.send('Audits.enable'),
+       ]);
++
++      // rebrowser-patches: manually create main world context
++      if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE'] !== '0') {
++        this.frames()
++          .filter(frame => {
++            return frame.client === client;
++          }).map(frame => {
++          const world = frame.worlds[MAIN_WORLD]
++          const contextPayload = {
++            id: -1,
++            name: '',
++            auxData: {
++              frameId: frame._id,
++            }
++          }
++          const context = new ExecutionContext(
++            frame.client,
++            // @ts-ignore
++            contextPayload,
++            world,
++            this.#logger,
++          );
++          world.setContext(context);
++        })
++      }
+     } catch (error) {
+       this.#frameTreeHandled?.resolve();
+       // The target might have been closed before the initialization finished.
+@@ -512,6 +550,39 @@ export class FrameManager extends EventEmitter<FrameManagerEvents> {
+       this._frameTree.addFrame(frame);
+     }
+ 
++    // rebrowser-patches: we cannot fully dispose contexts as they won't be recreated as we don't have Runtime events,
++    // instead, just mark it all empty
++    if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE'] !== '0') {
++      process.env['REBROWSER_PATCHES_DEBUG'] && console.log(`[rebrowser-patches] onFrameNavigated, navigationType = ${navigationType}, id = ${framePayload.id}, url = ${framePayload.url}`)
++      for (const worldSymbol of [MAIN_WORLD, PUPPETEER_WORLD]) {
++        // @ts-ignore
++        if (frame?.worlds[worldSymbol].context) {
++          // @ts-ignore
++          const frameOrWorker = frame.worlds[worldSymbol].environment
++          if ('clearDocumentHandle' in frameOrWorker) {
++            frameOrWorker.clearDocumentHandle();
++          }
++          // @ts-ignore
++          frame.worlds[worldSymbol].context?.clear(worldSymbol === MAIN_WORLD ? -1 : -2)
++          // rebrowser-patches: re-run pending waitForFunction/waitForSelector in the new document
++          // @ts-ignore
++          void frame.worlds[worldSymbol].taskManager.rerunAll()
++        }
++      }
++    }
++
++    // rebrowser-patches: without Runtime.enable, Chrome drops CDP bindings on navigation (crbug.com/382473087),
++    // so add the exposed functions' bindings again for the new document
++    if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE'] !== '0' && frame) {
++      for (const binding of this.#bindings) {
++        frame.client
++          .send('Runtime.addBinding', {name: CDP_BINDING_PREFIX + binding.name})
++          .catch(error => {
++            this.#logger?.(DEBUG_PREFIXES.error)?.(error);
++          });
++      }
++    }
++
+     frame = await this._frameTree.waitForFrame(frameId);
+     frame._navigated(framePayload);
+     this.emit(FrameManagerEvent.FrameNavigated, frame);
+@@ -544,6 +615,24 @@ export class FrameManager extends EventEmitter<FrameManagerEvents> {
+               worldName: name,
+               grantUniveralAccess: true,
+             })
++            .then((createIsolatedWorldResult: any) => {
++              // rebrowser-patches: save created context id
++              if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE'] === '0') {
++                return
++              }
++              if (!createIsolatedWorldResult?.executionContextId) {
++                // probably "Target closed" error, just ignore it
++                return
++              }
++              // @ts-ignore
++              this.#onExecutionContextCreated({
++                id: createIsolatedWorldResult.executionContextId,
++                name,
++                auxData: {
++                  frameId: frame._id,
++                }
++              }, frame.client)
++            })
+             .catch(error => {
+               this.#logger?.(DEBUG_PREFIXES.error)?.(error);
+             });
+diff --git a/src/cdp/IsolatedWorld.ts b/src/cdp/IsolatedWorld.ts
+index ec78c3a..6863cc6 100644
+--- a/src/cdp/IsolatedWorld.ts
++++ b/src/cdp/IsolatedWorld.ts
+@@ -1,3 +1,4 @@
++//@ts-nocheck
+ /**
+  * @license
+  * Copyright 2019 Google Inc.
+@@ -20,14 +21,14 @@ import {
+   fromEmitterEvent,
+   timeout,
+   withSourcePuppeteerURLIfNone,
++  UTILITY_WORLD_NAME,
+ } from '../common/util.js';
+ import {disposeSymbol} from '../util/disposable.js';
+ 
+ import {CdpElementHandle} from './ElementHandle.js';
+-import type {ExecutionContext} from './ExecutionContext.js';
++import {ExecutionContext} from './ExecutionContext.js';
+ import type {CdpFrame} from './Frame.js';
+-import type {PUPPETEER_WORLD} from './IsolatedWorlds.js';
+-import {MAIN_WORLD} from './IsolatedWorlds.js';
++import {MAIN_WORLD, PUPPETEER_WORLD} from './IsolatedWorlds.js';
+ import {CdpJSHandle} from './JSHandle.js';
+ import {CdpWebWorker} from './WebWorker.js';
+ 
+@@ -147,6 +148,25 @@ export class IsolatedWorld extends Realm {
+    * Waits for the next context to be set on the isolated world.
+    */
+   async #waitForExecutionContext(): Promise<ExecutionContext> {
++    const fixMode = process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE'] || 'addBinding';
++    // rebrowser-patches: there are no Runtime events in any patched mode, so create the context lazily
++    // (alwaysIsolated/enableDisable used to wait here forever for frames attached after the session started)
++    if (fixMode !== '0') {
++      const isMainWorld = this.#frameOrWorker.worlds[MAIN_WORLD] === this;
++      process.env['REBROWSER_PATCHES_DEBUG'] && console.log(`[rebrowser-patches][waitForExecutionContext] frameId = ${this.#frameOrWorker._id}, isMainWorld = ${isMainWorld}`);
++
++      const contextPayload = {
++        id: isMainWorld ? -1 : -2,
++        name: isMainWorld ? '' : UTILITY_WORLD_NAME,
++        auxData: {
++          frameId: this.#frameOrWorker._id,
++        }
++      };
++      const context = new ExecutionContext(this.client, contextPayload, this, this.#logger);
++      this.setContext(context);
++      return context;
++    }
++    
+     const error = new Error('Execution context was destroyed');
+     const result = await firstValueFrom(
+       fromEmitterEvent(this.#emitter, 'context').pipe(
+@@ -216,6 +236,8 @@ export class IsolatedWorld extends Realm {
+     if (!context) {
+       context = await this.#waitForExecutionContext();
+     }
++    // rebrowser-patches: make sure id is acquired
++    await context.acquireContextId()
+     const {object} = await this.client.send('DOM.resolveNode', {
+       backendNodeId: backendNodeId,
+       executionContextId: context.id,
+diff --git a/src/cdp/WebWorker.ts b/src/cdp/WebWorker.ts
+index afdb1a7..4f03e41 100644
+--- a/src/cdp/WebWorker.ts
++++ b/src/cdp/WebWorker.ts
+@@ -73,6 +73,10 @@ export class CdpWebWorker extends WebWorker {
+     this.#emitter = new EventEmitter<WebWorkerEvents>(undefined, logger);
+ 
+     this.#client.once('Runtime.executionContextCreated', async event => {
++      if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE'] !== '0') {
++        // rebrowser-patches: ignore default logic
++        return
++      }
+       this.#world.setContext(
+         new ExecutionContext(client, event.context, this.#world, logger),
+       );
+@@ -134,9 +138,24 @@ export class CdpWebWorker extends WebWorker {
+     networkManager?.addClient(this.#client).catch((err: Error) => {
+       return this.#logger?.(DEBUG_PREFIXES.error)?.(err);
+     });
+-    this.#client.send('Runtime.enable').catch((err: Error) => {
+-      return this.#logger?.(DEBUG_PREFIXES.error)?.(err);
+-    });
++    if (process.env['REBROWSER_PATCHES_RUNTIME_FIX_MODE'] !== '0') {
++      // @ts-ignore
++      process.env['REBROWSER_PATCHES_DEBUG'] && console.log('[rebrowser-patches][WebWorker] initialize', targetType, targetId)
++
++      // rebrowser-patches: manually create context
++      const contextPayload = {
++        id: -3,
++        auxData: {
++          frameId: targetId,
++        }
++      }
++      // @ts-ignore
++      this.#world.setContext(new ExecutionContext(client, contextPayload, this.#world, this.#logger));
++    } else {
++      this.#client.send('Runtime.enable').catch((err: Error) => {
++        return this.#logger?.(DEBUG_PREFIXES.error)?.(err);
++      });
++    }
+   }
+ 
+   mainRealm(): Realm {
+diff --git a/src/cdp/utils.ts b/src/cdp/utils.ts
+index f7dc289..28a8b11 100644
+--- a/src/cdp/utils.ts
++++ b/src/cdp/utils.ts
+@@ -247,6 +247,9 @@ export function valueFromPrimitiveRemoteObject(
+ /**
+  * @internal
+  */
++// rebrowser-patches: without Runtime.enable, Chrome drops CDP bindings when the page navigates
++// (crbug.com/382473087). The binding is added again when the navigation commits, so a call made before that
++// waits for it instead of throwing. This function is serialized into the page: keep comments out of its body.
+ export function addPageBinding(
+   type: string,
+   name: string,
+@@ -273,19 +276,32 @@ export function addPageBinding(
+       callPuppeteer.lastSeq = seq;
+       callPuppeteer.args.set(seq, args);
+ 
+-      // @ts-expect-error: In a different context.
+-      // Needs to be the same as CDP_BINDING_PREFIX.
+-      globalThis[prefix + name](
+-        JSON.stringify({
+-          type,
+-          name,
+-          seq,
+-          args,
+-          isTrivial: !args.some(value => {
+-            return value instanceof Node;
+-          }),
++      const payload = JSON.stringify({
++        type,
++        name,
++        seq,
++        args,
++        isTrivial: !args.some(value => {
++          return value instanceof Node;
+         }),
+-      );
++      });
++      const send = (tries: number): void => {
++        // @ts-expect-error: In a different context.
++        // Needs to be the same as CDP_BINDING_PREFIX.
++        const cdpBinding = globalThis[prefix + name];
++        if (typeof cdpBinding === 'function') {
++          cdpBinding(payload);
++        } else if (tries < 500) {
++          setTimeout(() => {
++            return send(tries + 1);
++          }, 10);
++        } else {
++          callPuppeteer.callbacks
++            .get(seq)
++            ?.reject(new Error(`binding ${name} is not available`));
++        }
++      };
++      send(0);
+ 
+       return new Promise((resolve, reject) => {
+         callPuppeteer.callbacks.set(seq, {
+diff --git a/src/common/util.ts b/src/common/util.ts
+index fc1a960..f864ac5 100644
+--- a/src/common/util.ts
++++ b/src/common/util.ts
+@@ -293,7 +293,9 @@ export function timeout(ms: number, cause?: Error): Observable<never> {
+  * @internal
+  */
+ export const UTILITY_WORLD_NAME =
+-  '__puppeteer_utility_world__' + packageVersion;
++  // rebrowser-patches: change utility world name
++  process.env['REBROWSER_PATCHES_UTILITY_WORLD_NAME'] !== '0' ? (process.env['REBROWSER_PATCHES_UTILITY_WORLD_NAME'] || 'util') :
++    '__puppeteer_utility_world__' + packageVersion;
+ 
+ /**
+  * @internal
+@@ -304,7 +306,14 @@ export const SOURCE_URL_REGEX =
+  * @internal
+  */
+ export function getSourceUrlComment(url: string): string {
+-  return `//# sourceURL=${url}`;
++  // rebrowser-patches: by default add no sourceURL, so stack frames of evaluated code are plain "<anonymous>" like any
++  // injected script (Puppeteer's "pptr:" URLs, or any fixed replacement name, would identify the library).
++  // REBROWSER_PATCHES_SOURCE_URL=<name> uses that name instead, REBROWSER_PATCHES_SOURCE_URL=0 keeps "pptr:" URLs.
++  const sourceUrl = process.env['REBROWSER_PATCHES_SOURCE_URL'];
++  if (sourceUrl === '0') {
++    return `//# sourceURL=${url}`;
++  }
++  return sourceUrl ? `//# sourceURL=${sourceUrl}` : '';
+ }
+ 
+ /**
+diff --git a/src/node/ChromeLauncher.ts b/src/node/ChromeLauncher.ts
+index d10991a..584ee55 100644
+--- a/src/node/ChromeLauncher.ts
++++ b/src/node/ChromeLauncher.ts
+@@ -175,6 +175,24 @@ export class ChromeLauncher extends BrowserLauncher {
+       removeMatchingFlags(options.args, '--disable-features');
+     }
+ 
++    // rebrowser-patches: hide navigator.webdriver with --disable-blink-features=AutomationControlled,
++    // merged with the user's own --disable-blink-features, and drop the flags below that pages can notice
++    // (--enable-automation, --disable-ipc-flooding-protection, --disable-popup-blocking).
++    // REBROWSER_PATCHES_WEBDRIVER_FIX=0 turns all of it off.
++    const webdriverFix = process.env['REBROWSER_PATCHES_WEBDRIVER_FIX'] !== '0';
++    const userDisabledBlinkFeatures = getFeatures(
++      '--disable-blink-features',
++      options.args,
++    );
++    if (webdriverFix && options.args && userDisabledBlinkFeatures.length > 0) {
++      removeMatchingFlags(options.args, '--disable-blink-features');
++    }
++    const disabledBlinkFeatures = [
++      ...new Set(['AutomationControlled', ...userDisabledBlinkFeatures]),
++    ].filter(feature => {
++      return feature !== '';
++    });
++
+     const turnOnExperimentalFeaturesForTesting =
+       process.env['PUPPETEER_TEST_EXPERIMENTAL_CHROME_FEATURES'] === 'true';
+ 
+@@ -232,13 +250,16 @@ export class ChromeLauncher extends BrowserLauncher {
+       '--disable-dev-shm-usage',
+       '--disable-hang-monitor',
+       '--disable-infobars',
+-      '--disable-ipc-flooding-protection',
+-      '--disable-popup-blocking',
++      // rebrowser-patches: a normal Chrome ignores history updates past 200 in 10 s and blocks popups opened
++      // without a click; pages can test both
++      webdriverFix ? '' : '--disable-ipc-flooding-protection',
++      webdriverFix ? '' : '--disable-popup-blocking',
+       '--disable-prompt-on-repost',
+       '--disable-renderer-backgrounding',
+       '--disable-search-engine-choice-screen',
+       '--disable-sync',
+-      '--enable-automation',
++      // rebrowser-patches: --enable-automation shows the "controlled by automated test software" bar
++      webdriverFix ? '' : '--enable-automation',
+       '--export-tagged-pdf',
+       '--force-color-profile=srgb',
+       '--generate-pdf-document-outline',
+@@ -248,6 +269,9 @@ export class ChromeLauncher extends BrowserLauncher {
+       '--use-mock-keychain',
+       `--disable-features=${disabledFeatures.join(',')}`,
+       `--enable-features=${enabledFeatures.join(',')}`,
++      webdriverFix
++        ? `--disable-blink-features=${disabledBlinkFeatures.join(',')}`
++        : '',
+     ].filter(arg => {
+       return arg !== '';
+     });
